@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "type": "sql",
+    "question": "How many CAPAs are open past their due date?",
+    "expected_source": "capa_log"
+  },
+  {
+    "id": 2,
+    "type": "sql",
+    "question": "Which suppliers have more than five NCRs opened this year?",
+    "expected_source": "ncr + defects + suppliers"
+  },
+  {
+    "id": 3,
+    "type": "sql",
+    "question": "What parts have minimum Cpk below 1.33 at Station 12?",
+    "expected_source": "inspection_results"
+  },
+  {
+    "id": 4,
+    "type": "doc",
+    "question": "What is the RPN for improper torque on assembly step 7?",
+    "expected_source": "PFMEA document chunk"
+  },
+  {
+    "id": 5,
+    "type": "doc",
+    "question": "What containment action was taken for the fastener issue?",
+    "expected_source": "8D report D3"
+  },
+  {
+    "id": 6,
+    "type": "doc",
+    "question": "What is the escalation procedure for a Severity 9 defect?",
+    "expected_source": "QMS procedure"
+  },
+  {
+    "id": 7,
+    "type": "doc",
+    "question": "What gauge is specified for measuring flange thickness?",
+    "expected_source": "control plan"
+  },
+  {
+    "id": 8,
+    "type": "hybrid",
+    "question": "Show NCR counts for EDV fascia and explain the control plan context.",
+    "expected_source": "ncr + RAG control plan"
+  },
+  {
+    "id": 9,
+    "type": "agent",
+    "question": "Why do torque failures recur at Station 12?",
+    "expected_source": "five_why agent + SQL + PFMEA"
+  },
+  {
+    "id": 10,
+    "type": "agent",
+    "question": "What are the Man and Machine causes for seal leakage?",
+    "expected_source": "fishbone agent + defects + PFMEA"
+  },
+  {
+    "id": 11,
+    "type": "sql",
+    "question": "List open CAPAs for tier 1 suppliers.",
+    "expected_source": "capa_log + suppliers"
+  },
+  {
+    "id": 12,
+    "type": "sql",
+    "question": "Top failure modes for part EDV-FASCIA-01 in the last 90 days.",
+    "expected_source": "defects"
+  }
+]

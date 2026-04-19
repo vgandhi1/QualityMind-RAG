@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mfg-quality-postgres
+    environment:
+      POSTGRES_USER: mfg
+      POSTGRES_PASSWORD: mfg
+      POSTGRES_DB: quality_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/sql:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mfg -d quality_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - rag-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mfg-quality-assistant
+    image: mfg-quality-assistant:latest
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/cached_chunks:/app/data/cached_chunks
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://mfg:mfg@postgres:5432/quality_db
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+
+# Named volumes (optional - currently only using bind mounts)
+# volumes:
+#   uploads:
