@@ -1,4 +1,4 @@
-# Manufacturing Quality Engineering Assistant
+# Manufacturing Quality Engineering (RAG) Assistant
 
 A production-style **FastAPI** application for **manufacturing quality engineering**: one natural-language interface over **PFMEA / CAPA / 8D / NCR / QMS-style documents** (RAG) and **structured defect, supplier, and SPC data** (text-to-SQL). It adds **LangGraph** workflows for **5-Why**, **fishbone (Ishikawa)**, and **CAPA / 8D draft** generation on top of a proven hybrid RAG + SQL stack.
 
