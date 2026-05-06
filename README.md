@@ -1,5 +1,18 @@
 # Manufacturing Quality Engineering (RAG) Assistant
 
+*(QualityMind-RAG)*
+
+## Application & Data / AI analytics highlights
+
+| Lens | What this project delivers |
+|------|----------------------------|
+| **Application** | A single conversational layer for manufacturing quality teams—policies and procedures versus live operational records—without switching tools. |
+| **Unstructured analytics (AI)** | **RAG** over PFMEA/CAPA/8D/NCR/QMS documents with hybrid retrieval (Pinecone + chunking)—answer “what does the standard say?” with citations. |
+| **Structured analytics (Data + AI)** | **Text-to-SQL** (Vanna + PostgreSQL) over a manufacturing schema—defects, NCRs, CAPA, suppliers, SPC-style aggregates—natural language to audited SQL. |
+| **Agentic / workflow AI** | **LangGraph** paths for root-cause and closure: **5-Why**, **fishbone**, **CAPA/8D drafts** grounded in retrieval and tabular context where configured. |
+| **Data quality & trust** | Parameterized queries, approvals for generated SQL, file/query limits; optional **Redis** caching and observability (**OPIK**) for traceability of answers. |
+| **MLOps / evaluation** | **RAGAS-oriented** evaluation seeds plus deployment patterns (**Lambda**, CI/CD) suited to iterating prompts, indexes, and SQL corpora safely. |
+
 A production-style **FastAPI** application for **manufacturing quality engineering**: one natural-language interface over **PFMEA / CAPA / 8D / NCR / QMS-style documents** (RAG) and **structured defect, supplier, and SPC data** (text-to-SQL). It adds **LangGraph** workflows for **5-Why**, **fishbone (Ishikawa)**, and **CAPA / 8D draft** generation on top of a proven hybrid RAG + SQL stack.
 
 **Live API docs (local):** [http://localhost:8000/docs](http://localhost:8000/docs)
