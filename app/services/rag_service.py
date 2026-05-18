@@ -35,9 +35,9 @@ class RAGService:
         self.query_cache_service = query_cache_service  # Optional cache service
 
         # LLM configuration
-        self.model = "gpt-4-turbo-preview"
+        self.model = settings.RAG_MODEL
         self.temperature = 0.1
-        self.max_tokens = 1000
+        self.max_tokens = settings.RAG_MAX_TOKENS
 
     async def generate_answer(
         self,
@@ -118,9 +118,17 @@ class RAGService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful assistant that answers questions based on provided context. "
-                                   "If the context doesn't contain enough information to answer the question, "
-                                   "say so explicitly. Always base your answers on the provided context."
+                        "content": (
+                            "You are a manufacturing quality engineering expert specializing in PFMEA, "
+                            "CAPA, 8D reports, DFMEA, SPC, control plans, and QMS documentation. "
+                            "Answer questions based strictly on the provided context. "
+                            "When relevant, cite specific document sections, part numbers, or process steps. "
+                            "For risk or capability assessments, quantify using RPN, Cpk, or sigma levels "
+                            "when the context supports it. "
+                            "If the context is insufficient, state what additional information "
+                            "(e.g., part number, revision level, control plan section) would be needed. "
+                            "Do not invent technical specifications or fabricate data."
+                        )
                     },
                     {
                         "role": "user",
@@ -227,9 +235,10 @@ class RAGService:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are a helpful assistant. Answer the question based on the provided context.
+        prompt = f"""Answer the question based on the provided quality engineering context below.
 
-If the context doesn't contain enough information to answer the question, say "I don't have enough information to answer that based on the provided documents."
+If the context does not contain sufficient information to answer the question, say:
+"I don't have enough information in the provided documents to answer that. You may need to check [specific document/data source]."
 
 Context:
 {context}

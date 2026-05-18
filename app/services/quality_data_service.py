@@ -1,15 +1,18 @@
 """
 Parameterized read-only SQL for manufacturing quality endpoints (plan.md).
+Uses a thread-safe connection pool to avoid creating a new TCP connection per query.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from contextlib import contextmanager
 from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
+from psycopg2.pool import ThreadedConnectionPool
 
 from app.config import settings
 
@@ -59,15 +62,40 @@ def _validate_supplier_id(value: Optional[int]) -> Optional[int]:
 
 
 class QualityDataService:
-    """Safe, parameterized queries against the quality schema."""
+    """Safe, parameterized queries against the quality schema with connection pooling."""
 
     def __init__(self, database_url: Optional[str] = None) -> None:
         self.database_url = database_url or settings.DATABASE_URL
         if not self.database_url:
             raise ValueError("DATABASE_URL is required for quality data endpoints")
 
-    def _connect(self):
-        return psycopg2.connect(self.database_url)
+        self._pool = ThreadedConnectionPool(
+            settings.DB_POOL_MIN_CONNECTIONS,
+            settings.DB_POOL_MAX_CONNECTIONS,
+            self.database_url,
+        )
+        logger.info(
+            "DB connection pool created (min=%d, max=%d)",
+            settings.DB_POOL_MIN_CONNECTIONS,
+            settings.DB_POOL_MAX_CONNECTIONS,
+        )
+
+    @contextmanager
+    def _get_conn(self):
+        """Yield a pooled connection; commit on success, rollback on error, return to pool."""
+        conn = self._pool.getconn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._pool.putconn(conn)
+
+    def close(self) -> None:
+        """Return all connections to the pool and close it (call on shutdown)."""
+        self._pool.closeall()
 
     def capa_status(
         self,
@@ -96,7 +124,7 @@ class QualityDataService:
             ORDER BY c.due_date NULLS LAST
             LIMIT %s
         """
-        with self._connect() as conn:
+        with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(sql, tuple(params))
                 return [dict(row) for row in cur.fetchall()]
@@ -126,7 +154,7 @@ class QualityDataService:
                 LIMIT %s
             """
             params = (limit,)
-        with self._connect() as conn:
+        with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(sql, params)
                 return [dict(row) for row in cur.fetchall()]
@@ -181,10 +209,17 @@ class QualityDataService:
             ORDER BY min_cpk ASC NULLS LAST
             LIMIT 20
         """
-        with self._connect() as conn:
+        with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(sql, tuple(params))
                 summary = dict(cur.fetchone() or {})
                 cur.execute(by_char_sql, tuple(params))
                 by_char = [dict(r) for r in cur.fetchall()]
-        return {"summary": summary, "by_characteristic": by_char, "filters": {"part_number": part_number}}
+
+        filters = {"part_number": part_number}
+        if station:
+            filters["station"] = station
+        if characteristic:
+            filters["characteristic"] = characteristic
+
+        return {"summary": summary, "by_characteristic": by_char, "filters": filters}

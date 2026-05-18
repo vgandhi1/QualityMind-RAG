@@ -1,74 +1,136 @@
-[
-  {
-    "id": 1,
-    "type": "sql",
-    "question": "How many CAPAs are open past their due date?",
-    "expected_source": "capa_log"
-  },
-  {
-    "id": 2,
-    "type": "sql",
-    "question": "Which suppliers have more than five NCRs opened this year?",
-    "expected_source": "ncr + defects + suppliers"
-  },
-  {
-    "id": 3,
-    "type": "sql",
-    "question": "What parts have minimum Cpk below 1.33 at Station 12?",
-    "expected_source": "inspection_results"
-  },
-  {
-    "id": 4,
-    "type": "doc",
-    "question": "What is the RPN for improper torque on assembly step 7?",
-    "expected_source": "PFMEA document chunk"
-  },
-  {
-    "id": 5,
-    "type": "doc",
-    "question": "What containment action was taken for the fastener issue?",
-    "expected_source": "8D report D3"
-  },
-  {
-    "id": 6,
-    "type": "doc",
-    "question": "What is the escalation procedure for a Severity 9 defect?",
-    "expected_source": "QMS procedure"
-  },
-  {
-    "id": 7,
-    "type": "doc",
-    "question": "What gauge is specified for measuring flange thickness?",
-    "expected_source": "control plan"
-  },
-  {
-    "id": 8,
-    "type": "hybrid",
-    "question": "Show NCR counts for EDV fascia and explain the control plan context.",
-    "expected_source": "ncr + RAG control plan"
-  },
-  {
-    "id": 9,
-    "type": "agent",
-    "question": "Why do torque failures recur at Station 12?",
-    "expected_source": "five_why agent + SQL + PFMEA"
-  },
-  {
-    "id": 10,
-    "type": "agent",
-    "question": "What are the Man and Machine causes for seal leakage?",
-    "expected_source": "fishbone agent + defects + PFMEA"
-  },
-  {
-    "id": 11,
-    "type": "sql",
-    "question": "List open CAPAs for tier 1 suppliers.",
-    "expected_source": "capa_log + suppliers"
-  },
-  {
-    "id": 12,
-    "type": "sql",
-    "question": "Top failure modes for part EDV-FASCIA-01 in the last 90 days.",
-    "expected_source": "defects"
-  }
-]
+{
+  "description": "RAGAS evaluation dataset for Manufacturing Quality Engineering Assistant",
+  "test_queries": [
+    {
+      "id": "sql_001",
+      "type": "SQL",
+      "question": "How many CAPAs are open past their due date?",
+      "ground_truth": "The number of open CAPAs past their due date from the capa_log table.",
+      "expected_source": "capa_log"
+    },
+    {
+      "id": "sql_002",
+      "type": "SQL",
+      "question": "Which suppliers have more than 5 NCRs opened this year?",
+      "ground_truth": "A list of supplier codes and names with NCR counts exceeding 5 this year.",
+      "expected_source": "ncr + defects + suppliers"
+    },
+    {
+      "id": "sql_003",
+      "type": "SQL",
+      "question": "What parts have minimum Cpk below 1.33 at Station 12?",
+      "ground_truth": "Part numbers and characteristics with min Cpk below 1.33 at Station 12.",
+      "expected_source": "inspection_results"
+    },
+    {
+      "id": "sql_004",
+      "type": "SQL",
+      "question": "List open CAPAs for tier 1 suppliers.",
+      "ground_truth": "CAPA numbers, titles, due dates for open CAPAs linked to tier 1 suppliers.",
+      "expected_source": "capa_log + suppliers"
+    },
+    {
+      "id": "sql_005",
+      "type": "SQL",
+      "question": "Top failure modes for part EDV-FASCIA-01 in the last 90 days.",
+      "ground_truth": "The most frequent failure modes found for part EDV-FASCIA-01 in the past 90 days.",
+      "expected_source": "defects"
+    },
+    {
+      "id": "sql_006",
+      "type": "SQL",
+      "question": "How many overdue corrective actions are there this month?",
+      "ground_truth": "Count of corrective actions past their due date in the current month.",
+      "expected_source": "corrective_actions"
+    },
+    {
+      "id": "doc_001",
+      "type": "DOCUMENTS",
+      "question": "What is the RPN for improper torque on assembly step 7?",
+      "ground_truth": "The Risk Priority Number for improper torque failure mode as specified in the PFMEA.",
+      "expected_source": "PFMEA document chunk"
+    },
+    {
+      "id": "doc_002",
+      "type": "DOCUMENTS",
+      "question": "What containment action was taken for the fastener issue?",
+      "ground_truth": "The D3 containment action from the 8D report for fastener failures.",
+      "expected_source": "8D report D3"
+    },
+    {
+      "id": "doc_003",
+      "type": "DOCUMENTS",
+      "question": "What is the escalation procedure for a Severity 9 defect?",
+      "ground_truth": "The quality escalation steps required for Severity 9 defects per the QMS procedure.",
+      "expected_source": "QMS procedure"
+    },
+    {
+      "id": "doc_004",
+      "type": "DOCUMENTS",
+      "question": "What gauge is specified for measuring flange thickness?",
+      "ground_truth": "The gauge type and ID specified in the control plan for flange thickness measurement.",
+      "expected_source": "control plan"
+    },
+    {
+      "id": "doc_005",
+      "type": "DOCUMENTS",
+      "question": "Explain the detection method for weld integrity in the PFMEA.",
+      "ground_truth": "The detection method rating and technique for weld integrity as documented in the PFMEA.",
+      "expected_source": "PFMEA document"
+    },
+    {
+      "id": "hybrid_001",
+      "type": "HYBRID",
+      "question": "Show NCR counts for EDV fascia and explain the control plan context.",
+      "ground_truth": "NCR count data from the database combined with control plan documentation context.",
+      "expected_source": "ncr + RAG control plan"
+    },
+    {
+      "id": "hybrid_002",
+      "type": "HYBRID",
+      "question": "How many open CAPAs are there and describe what corrective action means in the quality system?",
+      "ground_truth": "Open CAPA count from the database and definition of corrective actions from QMS documentation.",
+      "expected_source": "capa_log + QMS documentation"
+    },
+    {
+      "id": "agent_001",
+      "type": "AGENT",
+      "workflow": "five_why",
+      "question": "Do a 5-why analysis for recurring torque failures at Station 12.",
+      "ground_truth": "Structured 5-Why analysis with root cause and recommended action for torque failures.",
+      "expected_keys": ["problem_statement", "whys", "root_cause", "recommended_action", "confidence_score"]
+    },
+    {
+      "id": "agent_002",
+      "type": "AGENT",
+      "workflow": "fishbone",
+      "question": "Build a fishbone diagram for seal leakage failures.",
+      "ground_truth": "Ishikawa diagram with Man/Machine/Method/Material/Measurement/Environment causes for seal leakage.",
+      "expected_keys": ["effect", "bones"]
+    },
+    {
+      "id": "agent_003",
+      "type": "AGENT",
+      "workflow": "capa",
+      "question": "Draft a CAPA for recurring weld delamination on the EDV fascia part.",
+      "ground_truth": "CAPA draft with problem statement, root cause, corrective and preventive actions.",
+      "expected_keys": ["problem_statement", "root_cause", "corrective_action", "preventive_action", "status"]
+    },
+    {
+      "id": "agent_004",
+      "type": "AGENT",
+      "workflow": "8d",
+      "question": "Generate an 8D report for the fastener torque failures at Station 12.",
+      "ground_truth": "8D report draft with all disciplines D1 through D8 populated from historical context.",
+      "expected_keys": ["problem_statement", "d1_team", "d2_problem_desc", "d3_containment", "d4_root_cause", "d5_perm_action"]
+    },
+    {
+      "id": "agent_005",
+      "type": "AGENT",
+      "workflow": "five_why",
+      "question": "Why are we seeing increased scrap rates for injection-molded parts?",
+      "ground_truth": "5-Why chain identifying root cause of injection molding scrap with recommended actions.",
+      "expected_keys": ["problem_statement", "whys", "root_cause", "recommended_action", "confidence_score"]
+    }
+  ]
+}

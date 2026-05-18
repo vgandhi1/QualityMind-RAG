@@ -98,19 +98,23 @@ class VectorService:
                 # Create unique ID: filename + chunk_index
                 vector_id = f"{filename}_{chunk['chunk_index']}"
 
-                # Prepare metadata
                 import json
+                headings = chunk.get('headings', [])
                 metadata = {
                     "filename": filename,
                     "chunk_index": chunk['chunk_index'],
                     "token_count": chunk['token_count'],
-                    "text": chunk['text'][:1000],  # Limit text size in metadata (Pinecone has limits)
+                    "text": chunk['text'][:1000],  # Pinecone metadata size limit
                     "start_char": chunk.get('start_char', 0),
                     "end_char": chunk.get('end_char', 0),
-                    # NEW: Docling enhancements - store as JSON strings
-                    "headings": json.dumps(chunk.get('headings', [])),
+                    # Docling structural context
+                    "headings": json.dumps(headings),
                     "page_numbers": json.dumps(chunk.get('page_numbers', [])),
-                    "has_context": len(chunk.get('headings', [])) > 0  # Quick filter for context-aware chunks
+                    "has_context": len(headings) > 0,
+                    # Quality domain metadata (extracted by document_service)
+                    "doc_type": chunk.get('doc_type', 'generic'),
+                    "part_numbers": json.dumps(chunk.get('part_numbers', [])),
+                    "quality_keywords": json.dumps(chunk.get('quality_keywords', [])),
                 }
 
                 # Create vector tuple: (id, values, metadata)
@@ -165,17 +169,22 @@ class VectorService:
                 filter=filter_dict
             )
 
-            # Format results
+            # Format results — include all metadata fields used by RAG context builder
             chunks = []
             for match in results['matches']:
+                md = match['metadata']
                 chunks.append({
                     'id': match['id'],
                     'score': match['score'],
-                    'text': match['metadata'].get('text', ''),
+                    'text': md.get('text', ''),
                     'metadata': {
-                        'filename': match['metadata'].get('filename', ''),
-                        'chunk_index': match['metadata'].get('chunk_index', 0),
-                        'token_count': match['metadata'].get('token_count', 0),
+                        'filename': md.get('filename', ''),
+                        'chunk_index': md.get('chunk_index', 0),
+                        'token_count': md.get('token_count', 0),
+                        'headings': md.get('headings', '[]'),
+                        'page_numbers': md.get('page_numbers', '[]'),
+                        'doc_type': md.get('doc_type', 'generic'),
+                        'part_numbers': md.get('part_numbers', '[]'),
                     }
                 })
 

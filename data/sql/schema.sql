@@ -7,9 +7,9 @@ CREATE TABLE suppliers (
     id              SERIAL PRIMARY KEY,
     supplier_code   VARCHAR(20) UNIQUE NOT NULL,
     name            VARCHAR(200) NOT NULL,
-    tier            INTEGER,
+    tier            INTEGER CHECK (tier IN (1, 2, 3)),
     commodity       VARCHAR(100),
-    quality_rating  DECIMAL(4,2),
+    quality_rating  DECIMAL(4,2) CHECK (quality_rating >= 0 AND quality_rating <= 100),
     active          BOOLEAN DEFAULT TRUE
 );
 
@@ -18,9 +18,9 @@ CREATE TABLE ncr (
     ncr_number      VARCHAR(30) UNIQUE NOT NULL,
     part_number     VARCHAR(50),
     description     TEXT,
-    quantity        INTEGER,
-    disposition     VARCHAR(50),
-    status          VARCHAR(20),
+    quantity        INTEGER CHECK (quantity >= 0),
+    disposition     VARCHAR(50) CHECK (disposition IN ('use-as-is', 'rework', 'scrap', 'return-to-supplier', 'pending')),
+    status          VARCHAR(20) CHECK (status IN ('open', 'closed', 'on-hold')),
     opened_date     DATE,
     closed_date     DATE,
     root_cause      TEXT,
@@ -33,10 +33,10 @@ CREATE TABLE defects (
     description     TEXT,
     failure_mode    VARCHAR(200),
     detection_station VARCHAR(100),
-    disposition     VARCHAR(50),
-    severity        INTEGER,
+    disposition     VARCHAR(50) CHECK (disposition IN ('use-as-is', 'rework', 'scrap', 'return-to-supplier', 'pending')),
+    severity        INTEGER CHECK (severity >= 1 AND severity <= 10),
     date_found      DATE,
-    shift           VARCHAR(10),
+    shift           VARCHAR(10) CHECK (shift IN ('day', 'evening', 'night', 'weekend')),
     operator_id     VARCHAR(20),
     supplier_id     INTEGER REFERENCES suppliers(id),
     ncr_id          INTEGER REFERENCES ncr(id)
@@ -52,7 +52,7 @@ CREATE TABLE capa_log (
     preventive_action TEXT,
     owner           VARCHAR(100),
     supplier_id     INTEGER REFERENCES suppliers(id),
-    status          VARCHAR(20),
+    status          VARCHAR(20) CHECK (status IN ('open', 'closed', 'verified', 'cancelled')),
     due_date        DATE,
     opened_date     DATE,
     closed_date     DATE,
@@ -73,7 +73,7 @@ CREATE TABLE eight_d (
     d6_implemented  TEXT,
     d7_prevention   TEXT,
     d8_closure      TEXT,
-    status          VARCHAR(20),
+    status          VARCHAR(20) CHECK (status IN ('open', 'closed', 'on-hold')),
     opened_date     DATE,
     closed_date     DATE,
     supplier_id     INTEGER REFERENCES suppliers(id)
@@ -101,15 +101,29 @@ CREATE TABLE corrective_actions (
     owner           VARCHAR(100),
     due_date        DATE,
     completed_date  DATE,
-    status          VARCHAR(20),
+    status          VARCHAR(20) CHECK (status IN ('open', 'closed', 'overdue', 'verified')),
     capa_id         INTEGER REFERENCES capa_log(id),
     eight_d_id      INTEGER REFERENCES eight_d(id),
     verified        BOOLEAN DEFAULT FALSE
 );
 
+-- Core performance indexes (existing)
 CREATE INDEX idx_defects_part ON defects(part_number);
 CREATE INDEX idx_defects_station ON defects(detection_station);
 CREATE INDEX idx_capa_status ON capa_log(status);
 CREATE INDEX idx_capa_supplier ON capa_log(supplier_id);
 CREATE INDEX idx_ncr_part ON ncr(part_number);
 CREATE INDEX idx_insp_part_char ON inspection_results(part_number, characteristic);
+
+-- Additional indexes for common quality analytics queries
+CREATE INDEX idx_defects_date ON defects(date_found);
+CREATE INDEX idx_defects_severity ON defects(severity);
+CREATE INDEX idx_insp_station ON inspection_results(station);
+CREATE INDEX idx_insp_cpk ON inspection_results(cpk);
+CREATE INDEX idx_capa_due_date ON capa_log(due_date) WHERE status = 'open';
+CREATE INDEX idx_ncr_status ON ncr(status);
+CREATE INDEX idx_eight_d_part ON eight_d(part_number);
+CREATE INDEX idx_eight_d_status ON eight_d(status);
+CREATE INDEX idx_corrective_capa ON corrective_actions(capa_id);
+CREATE INDEX idx_corrective_status ON corrective_actions(status);
+CREATE INDEX idx_suppliers_tier ON suppliers(tier) WHERE active = TRUE;

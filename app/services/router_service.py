@@ -7,27 +7,36 @@ from typing import Literal
 
 QueryType = Literal["SQL", "DOCUMENTS", "HYBRID", "AGENT"]
 
+# Agent sub-type lookup used by unified_query to dispatch directly to the right workflow
+FISHBONE_PHRASES = {"fishbone", "ishikawa", "cause and effect", "categories of cause"}
+EIGHT_D_PHRASES = {"draft 8d", "draft an 8d", "generate 8d"}
+CAPA_PHRASES = {"draft capa", "write corrective action", "create problem report"}
+FIVE_WHY_PHRASES = {"5-why", "5 why", "five why", "root cause analysis for"}
+
+
+def detect_agent_workflow(question: str) -> str:
+    """Return the specific agent workflow type for an AGENT-routed question."""
+    q = question.lower()
+    if any(p in q for p in FISHBONE_PHRASES):
+        return "fishbone"
+    if any(p in q for p in EIGHT_D_PHRASES):
+        return "8d"
+    if any(p in q for p in CAPA_PHRASES):
+        return "capa"
+    return "five_why"  # default for "5 why", "root cause analysis for", etc.
+
 
 class QueryRouter:
     """Rule-based router: Text-to-SQL, Document RAG, Hybrid, or quality agent workflows."""
 
     AGENT_PHRASES = [
-        "5-why",
-        "5 why",
-        "five why",
-        "fishbone",
-        "ishikawa",
-        "cause and effect",
-        "categories of cause",
-        "draft capa",
-        "draft 8d",
-        "draft an 8d",
-        "generate 8d",
-        "write corrective action",
-        "create problem report",
-        "root cause analysis for",
+        *FIVE_WHY_PHRASES,
+        *FISHBONE_PHRASES,
+        *EIGHT_D_PHRASES,
+        *CAPA_PHRASES,
     ]
 
+    # Requires at least one quality-domain noun to avoid false positives on generic language
     SQL_KEYWORDS = [
         "how many",
         "count",
@@ -42,65 +51,48 @@ class QueryRouter:
         "min",
         "highest",
         "lowest",
-        "list all",
-        "show all",
-        "find all",
-        "get all",
-        "display all",
-        "list",
-        "show",
-        "find",
-        "get",
-        "display",
         "which suppliers",
-        "supplier",
+        "supplier quality",
         "capa",
         "ncr",
         "defect",
         "defects",
-        "scrap",
+        "scrap rate",
         "yield",
+        "first pass yield",
         "cpk",
         "cp ",
         "spc",
-        "inspection",
+        "inspection result",
         "open capa",
         "overdue",
-        "last",
-        "recent",
-        "past",
-        "previous",
+        "recurrence",
         "this month",
         "this year",
         "today",
         "yesterday",
-        "week",
-        "month",
-        "year",
+        "last week",
+        "last month",
+        "last year",
         "more than",
         "less than",
         "greater than",
-        "top",
+        "top failure",
         "bottom",
         "rank",
         "ranking",
-        "best",
-        "worst",
+        "worst supplier",
+        "best supplier",
         "by segment",
         "by category",
         "by status",
         "group by",
-        "per",
-        "each",
-        "every",
-        "database",
-        "table",
-        "record",
-        "row",
-        "data",
-        "station",
         "failure mode",
         "failure modes",
+        "detection station",
+        "open ncr",
+        "overdue capa",
+        "severity score",
     ]
 
     DOCUMENT_KEYWORDS = [
@@ -116,13 +108,11 @@ class QueryRouter:
         "policies",
         "procedure",
         "procedures",
-        "process",
         "guideline",
         "guidelines",
         "rule",
         "rules",
         "regulation",
-        "guide",
         "manual",
         "handbook",
         "documentation",
@@ -146,20 +136,25 @@ class QueryRouter:
         "understand",
         "clarify",
         "elaborate",
-        "detail",
         "overview",
-        "summary",
-        "summarize",
         "pfmea",
         "dfmea",
         "control plan",
         "work instruction",
         "qms",
-        "8d for",
         "8d report",
+        "8d for",
         "containment",
         "detection method",
         "severity rating",
+        "process step",
+        "failure effect",
+        "iatf",
+        "iso 9001",
+        "apqp",
+        "ppap",
+        "gauge r&r",
+        "measurement system",
     ]
 
     HYBRID_KEYWORDS = [
@@ -168,7 +163,6 @@ class QueryRouter:
         "and tell me",
         "also explain",
         "also describe",
-        "also tell me",
         "show data and explain",
         "list and describe",
         "compare and explain",
@@ -176,6 +170,7 @@ class QueryRouter:
         "defect counts and",
         "counts and explain",
         "open capas and",
+        "ncr history and",
     ]
 
     @staticmethod
@@ -240,9 +235,10 @@ class QueryRouter:
             "",
         ]
         if route == "AGENT":
-            lines.append("Structured quality workflow (5-Why, fishbone, or CAPA/8D draft).")
+            wf = detect_agent_workflow(question)
+            lines.append(f"Structured quality workflow ({wf}).")
         elif route == "SQL":
-            lines.append("Structured data query.")
+            lines.append("Structured data query against quality database.")
         elif route == "DOCUMENTS":
             lines.append("Documentation or policy-style question.")
         else:

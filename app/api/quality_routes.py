@@ -4,6 +4,8 @@ Manufacturing quality endpoints (plan.md section 6).
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any, Optional
 
@@ -14,11 +16,22 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.services.quality_data_service import get_quality_data_service
 from app.services.quality_langgraph import get_quality_workflows
+from app.services.service_registry import get_rag_service
 from app.utils import QueryValidator, ValidationError, ErrorResponse
 
 logger = logging.getLogger("rag_app.quality_routes")
 
 router = APIRouter(prefix="/quality", tags=["Quality"])
+
+# Module-level OpenAI client singleton for SPC narrative generation
+_narrative_client: Optional[AsyncOpenAI] = None
+
+
+def _get_narrative_client() -> AsyncOpenAI:
+    global _narrative_client
+    if _narrative_client is None:
+        _narrative_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    return _narrative_client
 
 
 class ProblemBody(BaseModel):
@@ -58,19 +71,23 @@ def _validate_question(text: str) -> str:
         raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e))) from e
 
 
-@router.post("/five-why", status_code=status.HTTP_200_OK)
-async def five_why(body: ProblemBody) -> dict[str, Any]:
-    _validate_question(body.problem_statement)
+def _get_workflows_or_503():
     try:
-        wf = get_quality_workflows()
+        return get_quality_workflows()
     except RuntimeError:
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
                 "Quality workflows",
-                "Configure OPENAI_API_KEY and RAG/SQL services for full context.",
+                "Configure OPENAI_API_KEY and RAG/SQL services.",
             ),
         )
+
+
+@router.post("/five-why", status_code=status.HTTP_200_OK)
+async def five_why(body: ProblemBody) -> dict[str, Any]:
+    _validate_question(body.problem_statement)
+    wf = _get_workflows_or_503()
     try:
         result = await wf.run_five_why(body.problem_statement)
         return {"status": "success", "analysis": result}
@@ -85,16 +102,7 @@ async def five_why(body: ProblemBody) -> dict[str, Any]:
 @router.post("/fishbone", status_code=status.HTTP_200_OK)
 async def fishbone(body: FishboneBody) -> dict[str, Any]:
     _validate_question(body.effect)
-    try:
-        wf = get_quality_workflows()
-    except RuntimeError:
-        raise HTTPException(
-            status_code=503,
-            detail=ErrorResponse.service_unavailable(
-                "Quality workflows",
-                "Configure OPENAI_API_KEY and RAG/SQL services for full context.",
-            ),
-        )
+    wf = _get_workflows_or_503()
     try:
         result = await wf.run_fishbone(body.effect, body.station)
         return {"status": "success", "fishbone": result}
@@ -109,13 +117,7 @@ async def fishbone(body: FishboneBody) -> dict[str, Any]:
 @router.post("/draft-capa", status_code=status.HTTP_200_OK)
 async def draft_capa(body: DraftBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
-    try:
-        wf = get_quality_workflows()
-    except RuntimeError:
-        raise HTTPException(
-            status_code=503,
-            detail=ErrorResponse.service_unavailable("Quality workflows", "Configure OPENAI_API_KEY."),
-        )
+    wf = _get_workflows_or_503()
     try:
         result = await wf.run_draft("capa", body.problem_statement, body.part_number)
         return {"status": "success", "draft": result}
@@ -130,13 +132,7 @@ async def draft_capa(body: DraftBody) -> dict[str, Any]:
 @router.post("/draft-8d", status_code=status.HTTP_200_OK)
 async def draft_8d(body: DraftBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
-    try:
-        wf = get_quality_workflows()
-    except RuntimeError:
-        raise HTTPException(
-            status_code=503,
-            detail=ErrorResponse.service_unavailable("Quality workflows", "Configure OPENAI_API_KEY."),
-        )
+    wf = _get_workflows_or_503()
     try:
         result = await wf.run_draft("8d", body.problem_statement, body.part_number)
         return {"status": "success", "draft": result}
@@ -164,7 +160,9 @@ async def capa_status(
             ),
         )
     try:
-        rows = svc.capa_status(supplier_id=supplier_id, overdue_only=overdue_only, limit=limit)
+        rows = await asyncio.to_thread(
+            svc.capa_status, supplier_id=supplier_id, overdue_only=overdue_only, limit=limit
+        )
         return {"status": "success", "count": len(rows), "capas": rows}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e))) from e
@@ -179,16 +177,20 @@ async def capa_status(
 @router.post("/pfmea-search", status_code=status.HTTP_200_OK)
 async def pfmea_search(body: PfmeaSearchBody) -> dict[str, Any]:
     _validate_question(body.query)
-    from app.main import rag_service
-
-    if not rag_service:
+    try:
+        rag = get_rag_service()
+    except RuntimeError:
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable("RAG service", "Configure OpenAI and Pinecone."),
         )
     try:
-        chunks = await rag_service.get_similar_chunks(question=body.query, top_k=body.top_k)
-        return {"status": "success", "chunks": chunks.get("chunks", []), "total_found": chunks.get("total_found")}
+        chunks = await rag.get_similar_chunks(question=body.query, top_k=body.top_k)
+        return {
+            "status": "success",
+            "chunks": chunks.get("chunks", []),
+            "total_found": chunks.get("total_found"),
+        }
     except Exception:
         logger.exception("pfmea_search failed")
         raise HTTPException(
@@ -207,7 +209,7 @@ async def ncr_history(body: NcrHistoryBody) -> dict[str, Any]:
             detail=ErrorResponse.service_unavailable("Quality database", "Configure DATABASE_URL."),
         )
     try:
-        rows = svc.ncr_history(part_number=body.part_number, limit=body.limit)
+        rows = await asyncio.to_thread(svc.ncr_history, part_number=body.part_number, limit=body.limit)
         return {"status": "success", "count": len(rows), "ncrs": rows}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e))) from e
@@ -229,7 +231,8 @@ async def spc_summary(body: SpcSummaryBody) -> dict[str, Any]:
             detail=ErrorResponse.service_unavailable("Quality database", "Configure DATABASE_URL."),
         )
     try:
-        stats = svc.spc_aggregate(
+        stats = await asyncio.to_thread(
+            svc.spc_aggregate,
             part_number=body.part_number,
             characteristic=body.characteristic,
             station=body.station,
@@ -246,19 +249,24 @@ async def spc_summary(body: SpcSummaryBody) -> dict[str, Any]:
     narrative = ""
     if settings.OPENAI_API_KEY:
         try:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client = _get_narrative_client()
             resp = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=settings.NARRATIVE_MODEL,
                 temperature=0.2,
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a manufacturing quality engineer. Summarize SPC metrics clearly for operators. "
-                        "Do not invent numbers; only interpret the JSON provided.",
+                        "content": (
+                            "You are a manufacturing quality engineer. "
+                            "Summarize SPC metrics clearly for operators and quality teams. "
+                            "Highlight any Cpk values below 1.33 as requiring attention, "
+                            "and values below 1.0 as critical. "
+                            "Do not invent numbers; only interpret the JSON provided."
+                        ),
                     },
                     {
                         "role": "user",
-                        "content": str(stats),
+                        "content": json.dumps(stats, default=str),
                     },
                 ],
             )

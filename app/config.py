@@ -28,9 +28,22 @@ class Settings(BaseSettings):
     # Supabase/PostgreSQL Configuration
     DATABASE_URL: Optional[str] = None  # Required for Text-to-SQL
 
+    # Model Configuration — centralised so every service stays in sync
+    RAG_MODEL: str = "gpt-4o"           # Document Q&A
+    AGENT_MODEL: str = "gpt-4o"         # 5-Why / fishbone / CAPA / 8D workflows
+    NARRATIVE_MODEL: str = "gpt-4o-mini"  # Brief SPC summaries (cost-efficient)
+    RAG_MAX_TOKENS: int = 2000          # Enough for detailed quality answers
+
     # OPIK Monitoring
     OPIK_API_KEY: Optional[str] = None  # Optional for monitoring
-    OPIK_PROJECT_NAME: str = "Multi-Source-RAG"  # Add this line with your custom project name
+    OPIK_PROJECT_NAME: str = "Multi-Source-RAG"
+
+    # SQL approval workflow
+    PENDING_QUERY_TTL_SECONDS: int = 3600  # Evict stale pending queries after 1 hour
+
+    # Database connection pool
+    DB_POOL_MIN_CONNECTIONS: int = 1
+    DB_POOL_MAX_CONNECTIONS: int = 5
 
     # Vanna 2.0 Configuration (Text-to-SQL)
     VANNA_MODEL: str = "gpt-4o"  # OpenAI model for SQL generation

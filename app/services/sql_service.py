@@ -324,8 +324,9 @@ class TextToSQLService:
             pinecone_api_key=pinecone_key
         )
 
-        # Approval workflow state (in-memory)
+        # Approval workflow state (in-memory, TTL-evicted)
         self.pending_queries: Dict[str, Dict[str, Any]] = {}
+        self._pending_ttl = settings.PENDING_QUERY_TTL_SECONDS
 
         # Training flag
         self.is_trained = False
@@ -507,6 +508,8 @@ LIMIT 20;""",
         if not self.is_trained:
             raise Exception("Schema context not prepared. Call complete_training() first.")
 
+        self._cleanup_expired_queries()
+
         # Check cache first (if cache service is available)
         if self.query_cache_service and self.query_cache_service.enabled:
             cache_key = self.query_cache_service.get_sql_gen_key(question)
@@ -680,17 +683,20 @@ LIMIT 20;""",
                 'status': 'error'
             }
 
-    def get_pending_queries(self) -> List[Dict[str, Any]]:
-        """
-        Get list of all pending queries awaiting approval.
-
-        Returns:
-            List of pending query information
-        """
-        return [
-            {
-                'query_id': qid,
-                **info
-            }
-            for qid, info in self.pending_queries.items()
+    def _cleanup_expired_queries(self) -> None:
+        """Evict pending queries that exceeded the TTL."""
+        from datetime import datetime, timezone
+        cutoff = datetime.now(tz=timezone.utc).timestamp() - self._pending_ttl
+        expired = [
+            qid for qid, info in self.pending_queries.items()
+            if pd.Timestamp(info.get("generated_at", "1970-01-01")).timestamp() < cutoff
         ]
+        for qid in expired:
+            del self.pending_queries[qid]
+        if expired:
+            logger.info("Evicted %d expired pending SQL queries", len(expired))
+
+    def get_pending_queries(self) -> List[Dict[str, Any]]:
+        """Return pending queries awaiting approval (auto-evicts expired ones)."""
+        self._cleanup_expired_queries()
+        return [{"query_id": qid, **info} for qid, info in self.pending_queries.items()]

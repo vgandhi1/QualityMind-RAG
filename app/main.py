@@ -28,7 +28,9 @@ from app.utils import (
 )
 from app.api.quality_routes import router as quality_router
 from app.services.quality_data_service import init_quality_data_service
-from app.services.quality_langgraph import init_quality_workflows
+from app.services.quality_langgraph import init_quality_workflows, get_quality_workflows
+from app.services.service_registry import register_rag_service
+from app.services.router_service import detect_agent_workflow
 
 # Initialize logging
 logger = setup_logging(log_level="INFO")
@@ -126,7 +128,7 @@ async def get_info():
         "application": {
             "name": "Manufacturing Quality Engineering Assistant",
             "version": "1.0.0",
-            "environment": "development",  # Will be loaded from settings once .env exists
+            "environment": settings.ENVIRONMENT,
         },
         "features": {
             "document_rag": "Available - Phase 1 Complete",
@@ -886,18 +888,30 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
                 logger.warning(f"Failed to update OPIK span: {e}")
 
         if route_type == "AGENT":
-            result.update(
-                {
-                    "status": "agent_route",
-                    "message": "Structured quality workflow. Use POST /quality/five-why, /quality/fishbone, /quality/draft-capa, or /quality/draft-8d.",
-                    "suggested_endpoints": {
-                        "five_why": "POST /quality/five-why",
-                        "fishbone": "POST /quality/fishbone",
-                        "draft_capa": "POST /quality/draft-capa",
-                        "draft_8d": "POST /quality/draft-8d",
-                    },
-                }
-            )
+            try:
+                wf = get_quality_workflows()
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Quality workflows unavailable. Configure OPENAI_API_KEY.",
+                )
+            workflow_type = detect_agent_workflow(question)
+            try:
+                if workflow_type == "fishbone":
+                    analysis = await wf.run_fishbone(question)
+                    result.update({"workflow": "fishbone", "fishbone": analysis, "status": "completed"})
+                elif workflow_type == "8d":
+                    draft = await wf.run_draft("8d", question, None)
+                    result.update({"workflow": "draft_8d", "draft": draft, "status": "completed"})
+                elif workflow_type == "capa":
+                    draft = await wf.run_draft("capa", question, None)
+                    result.update({"workflow": "draft_capa", "draft": draft, "status": "completed"})
+                else:
+                    analysis = await wf.run_five_why(question)
+                    result.update({"workflow": "five_why", "analysis": analysis, "status": "completed"})
+            except Exception:
+                logger.exception("Agent workflow failed in unified_query (type=%s)", workflow_type)
+                raise HTTPException(status_code=500, detail=f"Quality workflow '{workflow_type}' failed")
             return result
 
         # Route to SQL
@@ -1224,7 +1238,8 @@ def initialize_services():
             embedding_service = EmbeddingService(query_cache_service=query_cache_service)  # Pass cache service
             vector_service = VectorService()
             vector_service.connect_to_index()
-            rag_service = RAGService(query_cache_service=query_cache_service)  # Pass cache service
+            rag_service = RAGService(query_cache_service=query_cache_service)
+            register_rag_service(rag_service)  # Expose to quality_routes without circular import
             logger.info("✓ Document RAG services initialized!")
         else:
             logger.warning("OpenAI/Pinecone API keys not configured.")
