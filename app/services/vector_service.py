@@ -113,7 +113,8 @@ class VectorService:
                     "filename": filename,
                     "chunk_index": chunk["chunk_index"],
                     "token_count": chunk["token_count"],
-                    "text": chunk["text"][:1000],  # Pinecone metadata size limit
+                    "text": chunk["text"][: settings.METADATA_TEXT_MAX],
+                    "doc_id": doc_id or "",
                     "start_char": chunk.get("start_char", 0),
                     "end_char": chunk.get("end_char", 0),
                     # Docling structural context

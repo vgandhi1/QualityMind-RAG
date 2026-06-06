@@ -13,6 +13,12 @@ from fastapi import APIRouter, HTTPException, Query, status
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
+from app.agent_validation import (
+    validate_8d,
+    validate_capa,
+    validate_fishbone,
+    validate_five_why,
+)
 from app.config import settings
 from app.services.quality_data_service import get_quality_data_service
 from app.services.quality_langgraph import get_quality_workflows
@@ -84,13 +90,35 @@ def _get_workflows_or_503():
         )
 
 
+def _dev_structure_check(workflow: str, output: dict) -> dict | None:
+    """In development, attach offline structural validation for analytical iteration."""
+    if settings.ENVIRONMENT != "development":
+        return None
+    validators = {
+        "five_why": validate_five_why,
+        "fishbone": validate_fishbone,
+        "capa": validate_capa,
+        "8d": validate_8d,
+    }
+    validator = validators.get(workflow)
+    return validator(output) if validator else None
+
+
+def _agent_response(payload_key: str, workflow: str, result: dict) -> dict[str, Any]:
+    body: dict[str, Any] = {"status": "success", payload_key: result}
+    check = _dev_structure_check(workflow, result)
+    if check is not None:
+        body["structure_check"] = check
+    return body
+
+
 @router.post("/five-why", status_code=status.HTTP_200_OK)
 async def five_why(body: ProblemBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
     wf = _get_workflows_or_503()
     try:
         result = await wf.run_five_why(body.problem_statement)
-        return {"status": "success", "analysis": result}
+        return _agent_response("analysis", "five_why", result)
     except Exception:
         logger.exception("five_why failed")
         raise HTTPException(
@@ -105,7 +133,7 @@ async def fishbone(body: FishboneBody) -> dict[str, Any]:
     wf = _get_workflows_or_503()
     try:
         result = await wf.run_fishbone(body.effect, body.station)
-        return {"status": "success", "fishbone": result}
+        return _agent_response("fishbone", "fishbone", result)
     except Exception:
         logger.exception("fishbone failed")
         raise HTTPException(
@@ -120,7 +148,7 @@ async def draft_capa(body: DraftBody) -> dict[str, Any]:
     wf = _get_workflows_or_503()
     try:
         result = await wf.run_draft("capa", body.problem_statement, body.part_number)
-        return {"status": "success", "draft": result}
+        return _agent_response("draft", "capa", result)
     except Exception:
         logger.exception("draft_capa failed")
         raise HTTPException(
@@ -135,7 +163,7 @@ async def draft_8d(body: DraftBody) -> dict[str, Any]:
     wf = _get_workflows_or_503()
     try:
         result = await wf.run_draft("8d", body.problem_statement, body.part_number)
-        return {"status": "success", "draft": result}
+        return _agent_response("draft", "8d", result)
     except Exception:
         logger.exception("draft_8d failed")
         raise HTTPException(

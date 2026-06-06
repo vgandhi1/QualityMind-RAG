@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     MIN_CHUNK_SIZE: int = 256  # Minimum chunk size - smaller chunks will be merged
     CHUNK_OVERLAP: int = 50
 
+    # Dev analytical: max chars of chunk text stored in Pinecone metadata (40KB metadata limit)
+    METADATA_TEXT_MAX: int = 3500
+
     # Storage Backend Configuration
     STORAGE_BACKEND: str = "local"  # Options: "local", "s3"
 
