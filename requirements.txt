@@ -49,6 +49,7 @@ boto3  # AWS SDK for S3 storage
 # Development
 pytest
 pytest-asyncio
+pytest-cov  # required by --cov addopts in pyproject.toml
 black
 ruff
 moto[s3]  # Mock AWS S3 for testing

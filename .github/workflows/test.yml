@@ -20,16 +20,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest ruff black
 
-      - name: Lint with ruff
+      - name: Lint with ruff (non-blocking)
         run: ruff check app/ || echo "Linting issues found"
 
-      - name: Format check with black
+      - name: Format check with black (non-blocking)
         run: black --check app/ || echo "Formatting issues found"
 
-      - name: Run tests (if available)
-        run: pytest tests/ -v || echo "No tests found or tests not configured"
+      - name: Run tests
+        run: pytest tests/ -v
 
   build-test:
     runs-on: ubuntu-latest

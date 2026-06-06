@@ -6,6 +6,8 @@
 
 *One natural-language interface across your PFMEA documents, CAPA logs, defect databases, and structured quality records*
 
+### ▶ [**Live presentation**](https://vgandhi1.github.io/QualityMind-RAG/presentation.html) · [GitHub](https://github.com/vgandhi1/QualityMind-RAG)
+
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![OpenAI GPT-4o](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
@@ -326,7 +328,7 @@ curl -X POST "http://localhost:8000/query" \
 # Routes to DOCUMENTS: policy question
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the escalation procedure for a Severity 9 defect?"}'
+  -d '{"question": "What is the escalation procedure in the QMS manual?"}'
 
 # Routes to AGENT → 5-Why workflow
 curl -X POST "http://localhost:8000/query" \
@@ -341,6 +343,8 @@ curl -X POST "http://localhost:8000/quality/five-why" \
   -H "Content-Type: application/json" \
   -d '{"problem_statement": "Recurring weld delamination on EDV fascia assembly"}'
 ```
+
+*Illustrative response (actual content is LLM-generated; the structure below is what the schema + `app/agent_validation.py` enforce and what `tests/test_agent_validation.py` verifies):*
 
 ```json
 {
@@ -368,6 +372,8 @@ curl -X POST "http://localhost:8000/quality/fishbone" \
   -H "Content-Type: application/json" \
   -d '{"effect": "Fastener torque failures", "station": "Station 12"}'
 ```
+
+*Illustrative response (LLM-generated content; structure enforced by the 6M validator):*
 
 ```json
 {
@@ -440,7 +446,9 @@ python evaluate.py
 
 Evaluates two dimensions:
 
-**RAGAS** (retrieval quality — Documents / SQL / Hybrid queries):
+**RAGAS** (retrieval quality — Documents / SQL / Hybrid queries). Thresholds
+below are the **acceptance targets** the harness asserts against; running it
+requires `OPENAI_API_KEY` + `PINECONE_*` and a seeded database:
 
 | Metric | Target | Measures |
 |---|---|---|
@@ -457,6 +465,18 @@ Evaluates two dimensions:
 | 8D Draft | All disciplines D1–D8 populated |
 
 Test cases are defined in `data/eval/ragas_dataset.json` (17 Q&A pairs across SQL, Documents, Hybrid, and Agent types).
+
+The **structural validators** (`app/agent_validation.py`) and the **query router**
+and **input/SQL-safety guards** (`app/utils.py`) run fully offline — no API keys —
+and are covered by the unit suite:
+
+```bash
+pytest tests/test_router.py tests/test_validators.py tests/test_agent_validation.py -q
+```
+
+These pin the agent output contracts (5-Why keys + 3–5 whys + confidence ∈ [0,1],
+6M fishbone bones, CAPA fields, 8D D1–D8) and the dangerous-SQL block
+(DROP/DELETE/TRUNCATE/ALTER) independently of any live LLM call.
 
 ---
 

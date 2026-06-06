@@ -15,6 +15,12 @@ from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy
 
 from app.config import settings
+from app.agent_validation import (
+    validate_five_why as _validate_five_why,
+    validate_fishbone as _validate_fishbone,
+    validate_8d as _validate_8d,
+    validate_capa as _validate_capa,
+)
 from app.services.embedding_service import EmbeddingService
 from app.services.vector_service import VectorService
 from app.services.rag_service import RAGService
@@ -301,53 +307,6 @@ class RAGEvaluator:
         self.save_results(results, scores)
         print("\n✓ Evaluation complete!")
         return scores
-
-
-# ── Agent structural validators ────────────────────────────────────────────────
-
-def _check_keys(output: dict, required: list, workflow: str) -> dict:
-    missing = [k for k in required if k not in output or not output[k]]
-    return {"workflow": workflow, "passed": len(missing) == 0, "missing_keys": missing}
-
-
-def _validate_five_why(output: dict, expected_keys: list) -> dict:
-    required = expected_keys or ["problem_statement", "whys", "root_cause", "recommended_action", "confidence_score"]
-    result = _check_keys(output, required, "five_why")
-    whys = output.get("whys", [])
-    if not isinstance(whys, list) or len(whys) < 3:
-        result['passed'] = False
-        result['missing_keys'].append("whys (min 3 levels required)")
-    score = output.get("confidence_score", -1)
-    if not (0.0 <= float(score) <= 1.0):
-        result['passed'] = False
-        result['missing_keys'].append("confidence_score out of [0,1] range")
-    return result
-
-
-def _validate_fishbone(output: dict, expected_keys: list) -> dict:
-    required_bones = ["Man", "Machine", "Method", "Material", "Measurement", "Environment"]
-    result = _check_keys(output, ["effect", "bones"], "fishbone")
-    bones = output.get("bones", {})
-    missing_bones = [b for b in required_bones if b not in bones or not bones[b]]
-    if missing_bones:
-        result['passed'] = False
-        result['missing_keys'].extend([f"bone:{b}" for b in missing_bones])
-    return result
-
-
-def _validate_8d(output: dict, expected_keys: list) -> dict:
-    required = expected_keys or [
-        "problem_statement", "d1_team", "d2_problem_desc", "d3_containment",
-        "d4_root_cause", "d5_perm_action", "d6_implemented", "d7_prevention", "d8_closure",
-    ]
-    return _check_keys(output, required, "8d")
-
-
-def _validate_capa(output: dict, expected_keys: list) -> dict:
-    required = expected_keys or [
-        "problem_statement", "root_cause", "corrective_action", "preventive_action", "status",
-    ]
-    return _check_keys(output, required, "capa")
 
 
 async def main():
