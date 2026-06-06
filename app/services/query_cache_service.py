@@ -10,11 +10,10 @@ This service provides:
 Separate from document cache (S3/local) which handles large file storage.
 """
 
-import json
 import hashlib
+import json
 import logging
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 class QueryCacheService:
     """Redis-based cache service for query results, embeddings, and SQL."""
 
-    def __init__(self, redis_url: Optional[str] = None, redis_token: Optional[str] = None):
+    def __init__(self, redis_url: str | None = None, redis_token: str | None = None):
         """
         Initialize Upstash Redis connection.
 
@@ -85,7 +84,7 @@ class QueryCacheService:
 
     # ==================== Core Cache Operations ====================
 
-    def get(self, key: str, cache_type: str = "rag") -> Optional[Dict]:
+    def get(self, key: str, cache_type: str = "rag") -> dict | None:
         """
         Retrieve value from cache.
 
@@ -116,9 +115,7 @@ class QueryCacheService:
             self._record_miss(cache_type)
             return None
 
-    def set(
-        self, key: str, value: Dict, ttl: int, cache_type: str = "rag"
-    ) -> bool:
+    def set(self, key: str, value: dict, ttl: int, cache_type: str = "rag") -> bool:
         """
         Store value in cache with TTL.
 
@@ -233,7 +230,7 @@ class QueryCacheService:
         if cache_type in self.stats:
             self.stats[cache_type]["misses"] += 1
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """
         Get cache hit/miss statistics.
 
@@ -264,7 +261,7 @@ class QueryCacheService:
 
     # ==================== Health Check ====================
 
-    def health_check(self) -> Dict:
+    def health_check(self) -> dict:
         """
         Check Redis connection health.
 

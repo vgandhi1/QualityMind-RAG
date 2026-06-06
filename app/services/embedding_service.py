@@ -3,9 +3,10 @@ Embedding Service
 Handles generation of embeddings using OpenAI's API.
 """
 
-from typing import List, Tuple, Optional, Dict
-from openai import AsyncOpenAI
 import logging
+
+from openai import AsyncOpenAI
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class EmbeddingService:
         self.dimensions = 1536
         self.query_cache_service = query_cache_service  # Optional cache service
 
-    async def generate_embeddings(self, texts: List[str]) -> Tuple[List[List[float]], Optional[Dict]]:
+    async def generate_embeddings(self, texts: list[str]) -> tuple[list[list[float]], dict | None]:
         """
         Generate embeddings for a list of texts with caching support.
 
@@ -79,15 +80,13 @@ class EmbeddingService:
             if texts_to_generate:
                 try:
                     response = await self.client.embeddings.create(
-                        model=self.model,
-                        input=texts_to_generate,
-                        encoding_format="float"
+                        model=self.model, input=texts_to_generate, encoding_format="float"
                     )
 
                     new_embeddings = [item.embedding for item in response.data]
 
                     # Cache new embeddings and fill in results
-                    for idx, embedding in zip(text_indices, new_embeddings):
+                    for idx, embedding in zip(text_indices, new_embeddings, strict=False):
                         embeddings[idx] = embedding
 
                         # Cache individual embedding
@@ -95,26 +94,31 @@ class EmbeddingService:
                         cache_value = {
                             "embedding": embedding,
                             "model": self.model,
-                            "text_length": len(texts[idx])
+                            "text_length": len(texts[idx]),
                         }
                         ttl = settings.CACHE_TTL_EMBEDDINGS  # Default: 7 days
-                        self.query_cache_service.set(cache_key, cache_value, ttl=ttl, cache_type="embedding")
+                        self.query_cache_service.set(
+                            cache_key, cache_value, ttl=ttl, cache_type="embedding"
+                        )
 
                     # Log cache statistics
-                    logger.debug(f"Embedding cache: {cache_hits} hits, {cache_misses} misses "
-                               f"({cache_hits/(cache_hits+cache_misses)*100:.1f}% hit rate)")
+                    logger.debug(
+                        f"Embedding cache: {cache_hits} hits, {cache_misses} misses "
+                        f"({cache_hits/(cache_hits+cache_misses)*100:.1f}% hit rate)"
+                    )
 
                     # Build usage info
-                    usage_info = {
-                        "prompt_tokens": response.usage.prompt_tokens,
-                        "total_tokens": response.usage.total_tokens,
-                        "model": self.model,
-                        "cache_hits": cache_hits,
-                        "cache_misses": cache_misses
-                    } if hasattr(response, 'usage') and response.usage else {
-                        "cache_hits": cache_hits,
-                        "cache_misses": cache_misses
-                    }
+                    usage_info = (
+                        {
+                            "prompt_tokens": response.usage.prompt_tokens,
+                            "total_tokens": response.usage.total_tokens,
+                            "model": self.model,
+                            "cache_hits": cache_hits,
+                            "cache_misses": cache_misses,
+                        }
+                        if hasattr(response, "usage") and response.usage
+                        else {"cache_hits": cache_hits, "cache_misses": cache_misses}
+                    )
 
                     return embeddings, usage_info
 
@@ -126,31 +130,33 @@ class EmbeddingService:
                 return embeddings, {
                     "cache_hits": cache_hits,
                     "cache_misses": 0,
-                    "model": self.model
+                    "model": self.model,
                 }
 
         # No cache available - generate all embeddings
         try:
             response = await self.client.embeddings.create(
-                model=self.model,
-                input=texts,
-                encoding_format="float"
+                model=self.model, input=texts, encoding_format="float"
             )
 
             embeddings = [item.embedding for item in response.data]
 
-            usage_info = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "total_tokens": response.usage.total_tokens,
-                "model": self.model
-            } if hasattr(response, 'usage') and response.usage else None
+            usage_info = (
+                {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                    "model": self.model,
+                }
+                if hasattr(response, "usage") and response.usage
+                else None
+            )
 
             return embeddings, usage_info
 
         except Exception as e:
             raise Exception(f"Failed to generate embeddings: {str(e)}")
 
-    async def generate_single_embedding(self, text: str) -> List[float]:
+    async def generate_single_embedding(self, text: str) -> list[float]:
         """
         Generate embedding for a single text.
 

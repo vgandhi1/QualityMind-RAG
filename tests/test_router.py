@@ -11,30 +11,39 @@ import pytest
 from app.services.router_service import QueryRouter, detect_agent_workflow
 
 
-@pytest.mark.parametrize("question, expected", [
-    ("How many CAPAs are open past their due date?", "SQL"),
-    ("Which suppliers have more than 5 NCRs this year?", "SQL"),
-    ("Average Cpk ranking by category", "SQL"),
-])
+@pytest.mark.parametrize(
+    "question, expected",
+    [
+        ("How many CAPAs are open past their due date?", "SQL"),
+        ("Which suppliers have more than 5 NCRs this year?", "SQL"),
+        ("Average Cpk ranking by category", "SQL"),
+    ],
+)
 def test_routes_structured_counts_to_sql(question, expected):
     assert QueryRouter.route(question) == expected
 
 
-@pytest.mark.parametrize("question", [
-    "What is the containment procedure in the QMS manual?",
-    "Explain the PFMEA process step for torque verification",
-    "Define APQP",
-])
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the containment procedure in the QMS manual?",
+        "Explain the PFMEA process step for torque verification",
+        "Define APQP",
+    ],
+)
 def test_routes_policy_questions_to_documents(question):
     assert QueryRouter.route(question) == "DOCUMENTS"
 
 
-@pytest.mark.parametrize("question", [
-    "Do a 5-why analysis for recurring torque failures at Station 12",
-    "Build a fishbone for fastener torque failures",
-    "Draft CAPA for weld delamination",
-    "Generate 8D for the Station 12 torque issue",
-])
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Do a 5-why analysis for recurring torque failures at Station 12",
+        "Build a fishbone for fastener torque failures",
+        "Draft CAPA for weld delamination",
+        "Generate 8D for the Station 12 torque issue",
+    ],
+)
 def test_routes_agent_phrases_to_agent(question):
     assert QueryRouter.route(question) == "AGENT"
 
@@ -48,14 +57,17 @@ def test_unmatched_question_defaults_to_documents():
     assert QueryRouter.route("Tell me something interesting") == "DOCUMENTS"
 
 
-@pytest.mark.parametrize("question, workflow", [
-    ("draw a fishbone diagram", "fishbone"),
-    ("ishikawa for paint defects", "fishbone"),
-    ("draft 8d for the recall", "8d"),
-    ("draft capa for supplier issue", "capa"),
-    ("5-why on the leak", "five_why"),
-    ("root cause analysis for the recurring fault", "five_why"),
-])
+@pytest.mark.parametrize(
+    "question, workflow",
+    [
+        ("draw a fishbone diagram", "fishbone"),
+        ("ishikawa for paint defects", "fishbone"),
+        ("draft 8d for the recall", "8d"),
+        ("draft capa for supplier issue", "capa"),
+        ("5-why on the leak", "five_why"),
+        ("root cause analysis for the recurring fault", "five_why"),
+    ],
+)
 def test_detect_agent_workflow(question, workflow):
     assert detect_agent_workflow(question) == workflow
 

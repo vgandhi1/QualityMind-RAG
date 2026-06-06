@@ -6,13 +6,14 @@ Use this during development for fast iteration without S3 costs.
 """
 
 import json
-import shutil
 import logging
+import shutil
 from pathlib import Path
-from typing import Dict, List
+
 import numpy as np
-from app.services.storage_backend import StorageBackend
+
 from app.config import settings
+from app.services.storage_backend import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class LocalStorageBackend(StorageBackend):
         required_files = [
             doc_path / "chunks.json",
             doc_path / "embeddings.npy",
-            doc_path / "metadata.json"
+            doc_path / "metadata.json",
         ]
 
         exists = all(f.exists() for f in required_files)
@@ -103,7 +104,7 @@ class LocalStorageBackend(StorageBackend):
         shutil.copy2(file_path, destination)
         logger.info(f"Saved original document to {destination}")
 
-    def save_chunks(self, document_id: str, file_extension: str, chunks: List[Dict]) -> None:
+    def save_chunks(self, document_id: str, file_extension: str, chunks: list[dict]) -> None:
         """
         Save chunks.json to local storage.
 
@@ -121,7 +122,9 @@ class LocalStorageBackend(StorageBackend):
 
         logger.debug(f"Saved {len(chunks)} chunks to {chunks_file}")
 
-    def save_embeddings(self, document_id: str, file_extension: str, embeddings: np.ndarray) -> None:
+    def save_embeddings(
+        self, document_id: str, file_extension: str, embeddings: np.ndarray
+    ) -> None:
         """
         Save embeddings.npy to local storage.
 
@@ -138,7 +141,7 @@ class LocalStorageBackend(StorageBackend):
 
         logger.debug(f"Saved embeddings {embeddings.shape} to {embeddings_file}")
 
-    def save_metadata(self, document_id: str, file_extension: str, metadata: Dict) -> None:
+    def save_metadata(self, document_id: str, file_extension: str, metadata: dict) -> None:
         """
         Save metadata.json to local storage.
 
@@ -156,7 +159,7 @@ class LocalStorageBackend(StorageBackend):
 
         logger.debug(f"Saved metadata to {metadata_file}")
 
-    def load_chunks(self, document_id: str, file_extension: str) -> List[Dict]:
+    def load_chunks(self, document_id: str, file_extension: str) -> list[dict]:
         """
         Load chunks.json from local storage.
 
@@ -204,7 +207,7 @@ class LocalStorageBackend(StorageBackend):
         logger.debug(f"Loaded embeddings {embeddings.shape} from {embeddings_file}")
         return embeddings
 
-    def load_metadata(self, document_id: str, file_extension: str) -> Dict:
+    def load_metadata(self, document_id: str, file_extension: str) -> dict:
         """
         Load metadata.json from local storage.
 
@@ -247,7 +250,7 @@ class LocalStorageBackend(StorageBackend):
         else:
             logger.warning(f"Attempted to delete non-existent document {document_id}")
 
-    def list_documents(self) -> List[str]:
+    def list_documents(self) -> list[str]:
         """
         List all cached document IDs.
 
@@ -263,7 +266,7 @@ class LocalStorageBackend(StorageBackend):
         logger.debug(f"Found {len(document_ids)} cached documents")
         return document_ids
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """
         Get local storage statistics.
 
@@ -288,7 +291,7 @@ class LocalStorageBackend(StorageBackend):
             "cache_dir": str(self.cache_dir),
             "total_documents": documents_count,
             "total_files": total_files,
-            "total_size_mb": round(total_size / (1024 * 1024), 2)
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
         }
 
         logger.info(f"Local storage stats: {stats}")

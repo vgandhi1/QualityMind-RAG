@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 from openai import AsyncOpenAI
@@ -19,10 +19,12 @@ from app.utils import QueryValidator
 
 logger = logging.getLogger("rag_app.quality_langgraph")
 
-_workflows_singleton: Optional["QualityLangGraphWorkflows"] = None
+_workflows_singleton: QualityLangGraphWorkflows | None = None
 
 
-def init_quality_workflows(rag_service: Optional[RAGService], sql_service: Optional[TextToSQLService]) -> None:
+def init_quality_workflows(
+    rag_service: RAGService | None, sql_service: TextToSQLService | None
+) -> None:
     global _workflows_singleton
     _workflows_singleton = None
     if not settings.OPENAI_API_KEY:
@@ -34,7 +36,7 @@ def init_quality_workflows(rag_service: Optional[RAGService], sql_service: Optio
         logger.warning("Quality workflows not initialized: %s", type(e).__name__)
 
 
-def get_quality_workflows() -> "QualityLangGraphWorkflows":
+def get_quality_workflows() -> QualityLangGraphWorkflows:
     if _workflows_singleton is None:
         raise RuntimeError("Quality workflows unavailable")
     return _workflows_singleton
@@ -58,7 +60,7 @@ class FishboneState(TypedDict, total=False):
 class DraftState(TypedDict, total=False):
     mode: str
     problem_statement: str
-    part_number: Optional[str]
+    part_number: str | None
     rag_context: str
     sql_context: str
     output: dict[str, Any]
@@ -69,8 +71,8 @@ class QualityLangGraphWorkflows:
 
     def __init__(
         self,
-        rag_service: Optional[RAGService],
-        sql_service: Optional[TextToSQLService],
+        rag_service: RAGService | None,
+        sql_service: TextToSQLService | None,
     ) -> None:
         self.rag_service = rag_service
         self.sql_service = sql_service
@@ -241,8 +243,10 @@ class QualityLangGraphWorkflows:
         graph.add_edge("synthesize", END)
         return graph.compile()
 
-    async def run_fishbone(self, effect: str, station: Optional[str] = None) -> dict[str, Any]:
-        final_state = await self._fishbone_graph.ainvoke({"effect": effect, "station": station or ""})
+    async def run_fishbone(self, effect: str, station: str | None = None) -> dict[str, Any]:
+        final_state = await self._fishbone_graph.ainvoke(
+            {"effect": effect, "station": station or ""}
+        )
         return final_state.get("output") or {}
 
     # ── CAPA / 8D draft nodes ──────────────────────────────────────────────────
@@ -306,7 +310,9 @@ class QualityLangGraphWorkflows:
         graph.add_edge("synthesize", END)
         return graph.compile()
 
-    async def run_draft(self, mode: str, problem_statement: str, part_number: Optional[str]) -> dict[str, Any]:
+    async def run_draft(
+        self, mode: str, problem_statement: str, part_number: str | None
+    ) -> dict[str, Any]:
         final_state = await self._draft_graph.ainvoke(
             {"mode": mode, "problem_statement": problem_statement, "part_number": part_number}
         )

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Any
 
 import psycopg2
 import psycopg2.extras
@@ -20,7 +20,7 @@ logger = logging.getLogger("rag_app.quality_data")
 
 _PART_NUMBER_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
 
-_quality_data_singleton: Optional["QualityDataService"] = None
+_quality_data_singleton: QualityDataService | None = None
 
 
 def init_quality_data_service() -> None:
@@ -36,13 +36,13 @@ def init_quality_data_service() -> None:
         _quality_data_singleton = None
 
 
-def get_quality_data_service() -> "QualityDataService":
+def get_quality_data_service() -> QualityDataService:
     if _quality_data_singleton is None:
         raise RuntimeError("Quality data service unavailable")
     return _quality_data_singleton
 
 
-def _validate_part_number(value: Optional[str]) -> Optional[str]:
+def _validate_part_number(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
@@ -53,7 +53,7 @@ def _validate_part_number(value: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def _validate_supplier_id(value: Optional[int]) -> Optional[int]:
+def _validate_supplier_id(value: int | None) -> int | None:
     if value is None:
         return None
     if not isinstance(value, int) or value < 1 or value > 50_000_000:
@@ -64,7 +64,7 @@ def _validate_supplier_id(value: Optional[int]) -> Optional[int]:
 class QualityDataService:
     """Safe, parameterized queries against the quality schema with connection pooling."""
 
-    def __init__(self, database_url: Optional[str] = None) -> None:
+    def __init__(self, database_url: str | None = None) -> None:
         self.database_url = database_url or settings.DATABASE_URL
         if not self.database_url:
             raise ValueError("DATABASE_URL is required for quality data endpoints")
@@ -100,7 +100,7 @@ class QualityDataService:
     def capa_status(
         self,
         *,
-        supplier_id: Optional[int] = None,
+        supplier_id: int | None = None,
         overdue_only: bool = False,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
@@ -132,7 +132,7 @@ class QualityDataService:
     def ncr_history(
         self,
         *,
-        part_number: Optional[str] = None,
+        part_number: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         part_number = _validate_part_number(part_number)
@@ -163,8 +163,8 @@ class QualityDataService:
         self,
         *,
         part_number: str,
-        characteristic: Optional[str] = None,
-        station: Optional[str] = None,
+        characteristic: str | None = None,
+        station: str | None = None,
     ) -> dict[str, Any]:
         part_number = _validate_part_number(part_number)
         if not part_number:

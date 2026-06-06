@@ -38,8 +38,7 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
         console_handler.setLevel(logging.INFO)
 
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         console_handler.setFormatter(formatter)
 
@@ -59,29 +58,28 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
         file_handler = RotatingFileHandler(
             log_dir / "app.log",
             maxBytes=10_000_000,  # 10 MB per file
-            backupCount=5,         # Keep 5 backup files
-            encoding='utf-8'
+            backupCount=5,  # Keep 5 backup files
+            encoding="utf-8",
         )
         file_handler.setLevel(logging.DEBUG)  # Capture everything in file
 
         # Error Handler - separate file for errors only
         error_handler = RotatingFileHandler(
             log_dir / "error.log",
-            maxBytes=5_000_000,   # 5 MB per file
+            maxBytes=5_000_000,  # 5 MB per file
             backupCount=3,
-            encoding='utf-8'
+            encoding="utf-8",
         )
         error_handler.setLevel(logging.ERROR)
 
         # Formatters
         detailed_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
 
         simple_formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
 
         # Apply formatters

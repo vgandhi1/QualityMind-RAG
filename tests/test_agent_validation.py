@@ -87,7 +87,20 @@ def test_fishbone_empty_bone_fails():
 
 
 def test_8d_requires_all_disciplines():
-    full = dict.fromkeys(["problem_statement", "d1_team", "d2_problem_desc", "d3_containment", "d4_root_cause", "d5_perm_action", "d6_implemented", "d7_prevention", "d8_closure"], "x")
+    full = dict.fromkeys(
+        [
+            "problem_statement",
+            "d1_team",
+            "d2_problem_desc",
+            "d3_containment",
+            "d4_root_cause",
+            "d5_perm_action",
+            "d6_implemented",
+            "d7_prevention",
+            "d8_closure",
+        ],
+        "x",
+    )
     assert validate_8d(full)["passed"] is True
     del full["d8_closure"]
     assert validate_8d(full)["passed"] is False
@@ -95,8 +108,11 @@ def test_8d_requires_all_disciplines():
 
 def test_capa_requires_core_fields():
     full = {
-        "problem_statement": "x", "root_cause": "x",
-        "corrective_action": "x", "preventive_action": "x", "status": "open",
+        "problem_statement": "x",
+        "root_cause": "x",
+        "corrective_action": "x",
+        "preventive_action": "x",
+        "status": "open",
     }
     assert validate_capa(full)["passed"] is True
     del full["preventive_action"]

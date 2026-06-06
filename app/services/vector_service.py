@@ -3,10 +3,12 @@ Vector Service
 Handles vector storage and retrieval using Pinecone.
 """
 
-from typing import List, Dict, Any
 import logging
-from pinecone.grpc import PineconeGRPC
+from typing import Any
+
 from pinecone import ServerlessSpec
+from pinecone.grpc import PineconeGRPC
+
 from app.config import settings
 
 logger = logging.getLogger("rag_app.vector_service")
@@ -41,7 +43,7 @@ class VectorService:
         try:
             # Check if index exists
             existing_indexes = self.pc.list_indexes()
-            index_names = [idx['name'] for idx in existing_indexes]
+            index_names = [idx["name"] for idx in existing_indexes]
 
             if self.index_name not in index_names:
                 # Create index if it doesn't exist
@@ -52,8 +54,8 @@ class VectorService:
                     metric="cosine",
                     spec=ServerlessSpec(
                         cloud="aws",
-                        region=self.environment.split("-")[0]  # Extract region from environment
-                    )
+                        region=self.environment.split("-")[0],  # Extract region from environment
+                    ),
                 )
                 logger.info(f"Index {self.index_name} created successfully")
 
@@ -67,10 +69,10 @@ class VectorService:
 
     def add_documents(
         self,
-        chunks: List[Dict[str, Any]],
-        embeddings: List[List[float]],
+        chunks: list[dict[str, Any]],
+        embeddings: list[list[float]],
         filename: str,
-        namespace: str = "default"
+        namespace: str = "default",
     ):
         """
         Store document chunks with their embeddings in Pinecone.
@@ -94,27 +96,28 @@ class VectorService:
             # Prepare vectors for upsert
             vectors_to_upsert = []
 
-            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            for chunk, embedding in zip(chunks, embeddings, strict=False):
                 # Create unique ID: filename + chunk_index
                 vector_id = f"{filename}_{chunk['chunk_index']}"
 
                 import json
-                headings = chunk.get('headings', [])
+
+                headings = chunk.get("headings", [])
                 metadata = {
                     "filename": filename,
-                    "chunk_index": chunk['chunk_index'],
-                    "token_count": chunk['token_count'],
-                    "text": chunk['text'][:1000],  # Pinecone metadata size limit
-                    "start_char": chunk.get('start_char', 0),
-                    "end_char": chunk.get('end_char', 0),
+                    "chunk_index": chunk["chunk_index"],
+                    "token_count": chunk["token_count"],
+                    "text": chunk["text"][:1000],  # Pinecone metadata size limit
+                    "start_char": chunk.get("start_char", 0),
+                    "end_char": chunk.get("end_char", 0),
                     # Docling structural context
                     "headings": json.dumps(headings),
-                    "page_numbers": json.dumps(chunk.get('page_numbers', [])),
+                    "page_numbers": json.dumps(chunk.get("page_numbers", [])),
                     "has_context": len(headings) > 0,
                     # Quality domain metadata (extracted by document_service)
-                    "doc_type": chunk.get('doc_type', 'generic'),
-                    "part_numbers": json.dumps(chunk.get('part_numbers', [])),
-                    "quality_keywords": json.dumps(chunk.get('quality_keywords', [])),
+                    "doc_type": chunk.get("doc_type", "generic"),
+                    "part_numbers": json.dumps(chunk.get("part_numbers", [])),
+                    "quality_keywords": json.dumps(chunk.get("quality_keywords", [])),
                 }
 
                 # Create vector tuple: (id, values, metadata)
@@ -123,11 +126,8 @@ class VectorService:
             # Upsert vectors in batches
             batch_size = 100
             for i in range(0, len(vectors_to_upsert), batch_size):
-                batch = vectors_to_upsert[i:i + batch_size]
-                self.index.upsert(
-                    vectors=batch,
-                    namespace=namespace
-                )
+                batch = vectors_to_upsert[i : i + batch_size]
+                self.index.upsert(vectors=batch, namespace=namespace)
 
             logger.info(f"Successfully upserted {len(vectors_to_upsert)} vectors to Pinecone")
 
@@ -136,11 +136,11 @@ class VectorService:
 
     async def search(
         self,
-        query_embedding: List[float],
+        query_embedding: list[float],
         top_k: int = 3,
         namespace: str = "default",
-        filter_dict: Dict[str, Any] | None = None
-    ) -> Dict[str, Any]:
+        filter_dict: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Search for similar vectors in Pinecone.
 
@@ -166,38 +166,40 @@ class VectorService:
                 top_k=top_k,
                 include_metadata=True,
                 namespace=namespace,
-                filter=filter_dict
+                filter=filter_dict,
             )
 
             # Format results — include all metadata fields used by RAG context builder
             chunks = []
-            for match in results['matches']:
-                md = match['metadata']
-                chunks.append({
-                    'id': match['id'],
-                    'score': match['score'],
-                    'text': md.get('text', ''),
-                    'metadata': {
-                        'filename': md.get('filename', ''),
-                        'chunk_index': md.get('chunk_index', 0),
-                        'token_count': md.get('token_count', 0),
-                        'headings': md.get('headings', '[]'),
-                        'page_numbers': md.get('page_numbers', '[]'),
-                        'doc_type': md.get('doc_type', 'generic'),
-                        'part_numbers': md.get('part_numbers', '[]'),
+            for match in results["matches"]:
+                md = match["metadata"]
+                chunks.append(
+                    {
+                        "id": match["id"],
+                        "score": match["score"],
+                        "text": md.get("text", ""),
+                        "metadata": {
+                            "filename": md.get("filename", ""),
+                            "chunk_index": md.get("chunk_index", 0),
+                            "token_count": md.get("token_count", 0),
+                            "headings": md.get("headings", "[]"),
+                            "page_numbers": md.get("page_numbers", "[]"),
+                            "doc_type": md.get("doc_type", "generic"),
+                            "part_numbers": md.get("part_numbers", "[]"),
+                        },
                     }
-                })
+                )
 
             return {
-                'query_preview': query_embedding[:5],  # Just first 5 dims for reference
-                'chunks': chunks,
-                'total_found': len(chunks)
+                "query_preview": query_embedding[:5],  # Just first 5 dims for reference
+                "chunks": chunks,
+                "total_found": len(chunks),
             }
 
         except Exception as e:
             raise Exception(f"Failed to search Pinecone: {str(e)}")
 
-    def get_index_stats(self, namespace: str = "default") -> Dict[str, Any]:
+    def get_index_stats(self, namespace: str = "default") -> dict[str, Any]:
         """
         Get statistics about the Pinecone index.
 
@@ -213,9 +215,9 @@ class VectorService:
         try:
             stats = self.index.describe_index_stats()
             return {
-                "total_vector_count": stats.get('total_vector_count', 0),
-                "dimension": stats.get('dimension', 0),
-                "namespaces": stats.get('namespaces', {}),
+                "total_vector_count": stats.get("total_vector_count", 0),
+                "dimension": stats.get("dimension", 0),
+                "namespaces": stats.get("namespaces", {}),
             }
         except Exception as e:
             raise Exception(f"Failed to get index stats: {str(e)}")
@@ -233,10 +235,7 @@ class VectorService:
 
         try:
             # Delete using metadata filter
-            self.index.delete(
-                filter={"filename": {"$eq": filename}},
-                namespace=namespace
-            )
+            self.index.delete(filter={"filename": {"$eq": filename}}, namespace=namespace)
             logger.info(f"Deleted all vectors for filename: {filename}")
 
         except Exception as e:

@@ -4,7 +4,6 @@ Query Router Service — manufacturing quality + hybrid RAG/SQL (plan.md §7).
 
 from typing import Literal
 
-
 QueryType = Literal["SQL", "DOCUMENTS", "HYBRID", "AGENT"]
 
 # Agent sub-type lookup used by unified_query to dispatch directly to the right workflow

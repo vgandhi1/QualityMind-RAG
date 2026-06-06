@@ -3,34 +3,35 @@ Manufacturing Quality Engineering Assistant API.
 FastAPI + hybrid RAG / Text-to-SQL; extends sourangshupal/multidata-rag-project (see docs/REFERENCE_MULTIDATA.md).
 """
 
-from typing import Optional
 import os
-from fastapi import FastAPI, status, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
-import shutil
 
-from app.config import settings
-from app.logging_config import setup_logging, get_logger
-from app.services.document_service import parse_document, chunk_text
-from app.services.embedding_service import EmbeddingService
-from app.services.vector_service import VectorService
-from app.services.rag_service import RAGService
-from app.services.sql_service import TextToSQLService
-from app.services.router_service import QueryRouter
-from app.services.cache_service import CacheService
-from app.services.query_cache_service import QueryCacheService
-from app.utils import (
-    FileValidator, QueryValidator, ValidationError,
-    ErrorResponse, format_file_size, truncate_text
-)
+from fastapi import FastAPI, File, HTTPException, UploadFile, status
+
 from app.api.quality_routes import router as quality_router
+from app.auth import api_key_middleware
+from app.config import settings
+from app.logging_config import setup_logging
+from app.services.cache_service import CacheService
+from app.services.embedding_service import EmbeddingService
 from app.services.quality_data_service import init_quality_data_service
-from app.services.quality_langgraph import init_quality_workflows, get_quality_workflows
+from app.services.quality_langgraph import get_quality_workflows, init_quality_workflows
+from app.services.query_cache_service import QueryCacheService
+from app.services.rag_service import RAGService
+from app.services.router_service import QueryRouter, detect_agent_workflow
 from app.services.service_registry import register_rag_service
-from app.services.router_service import detect_agent_workflow
+from app.services.sql_service import TextToSQLService
+from app.services.vector_service import VectorService
+from app.utils import (
+    ErrorResponse,
+    FileValidator,
+    QueryValidator,
+    ValidationError,
+    format_file_size,
+)
 
 # Initialize logging
 logger = setup_logging(log_level="INFO")
@@ -38,14 +39,18 @@ logger = setup_logging(log_level="INFO")
 # OPIK monitoring (optional - gracefully handles if not configured)
 try:
     from opik import track
+
     OPIK_AVAILABLE = True
 except ImportError:
     OPIK_AVAILABLE = False
+
     # Create a no-op decorator if OPIK is not installed
     def track(name=None, **kwargs):
         def decorator(func):
             return func
+
         return decorator
+
 
 app = FastAPI(
     title="Manufacturing Quality Engineering Assistant",
@@ -57,6 +62,12 @@ app = FastAPI(
 )
 
 app.include_router(quality_router)
+
+
+@app.middleware("http")
+async def _api_key_guard(request, call_next):
+    return await api_key_middleware(request, call_next)
+
 
 # Global service instances (initialized on startup if API keys are available)
 embedding_service: EmbeddingService | None = None
@@ -109,10 +120,17 @@ async def health_check():
             "openai_configured": settings.OPENAI_API_KEY is not None,
             "pinecone_configured": settings.PINECONE_API_KEY is not None,
             "database_configured": settings.DATABASE_URL is not None,
-            "opik_configured": settings.OPIK_API_KEY is not None if hasattr(settings, 'OPIK_API_KEY') else False,
-            "redis_cache_configured": settings.UPSTASH_REDIS_URL is not None and settings.UPSTASH_REDIS_TOKEN is not None,
+            "opik_configured": (
+                settings.OPIK_API_KEY is not None if hasattr(settings, "OPIK_API_KEY") else False
+            ),
+            "redis_cache_configured": settings.UPSTASH_REDIS_URL is not None
+            and settings.UPSTASH_REDIS_TOKEN is not None,
         },
-        "cache": query_cache_service.health_check() if query_cache_service else {"status": "not_initialized"},
+        "cache": (
+            query_cache_service.health_check()
+            if query_cache_service
+            else {"status": "not_initialized"}
+        ),
     }
 
 
@@ -142,7 +160,7 @@ async def get_info():
             "docker": "Ready - Use docker-compose up",
             "dockerfile": "Multi-stage build optimized",
             "health_checks": "Enabled",
-            "volumes": ["uploads", "vanna_chromadb"]
+            "volumes": ["uploads", "vanna_chromadb"],
         },
         "system": {
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
@@ -207,8 +225,7 @@ async def upload_document(file: UploadFile = File(...)):
         FileValidator.validate_file(file)
     except ValidationError as e:
         raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse.validation_error(str(e), field="file")
+            status_code=400, detail=ErrorResponse.validation_error(str(e), field="file")
         )
 
     # Check if services are initialized
@@ -217,19 +234,19 @@ async def upload_document(file: UploadFile = File(...)):
             status_code=503,
             detail=ErrorResponse.service_unavailable(
                 "Document RAG services",
-                "Please configure OPENAI_API_KEY and PINECONE_API_KEY in .env"
-            )
+                "Please configure OPENAI_API_KEY and PINECONE_API_KEY in .env",
+            ),
         )
 
     try:
         # Save uploaded file (sanitize filename to prevent path traversal)
-        safe_filename = Path(file.filename).name
+        safe_filename = FileValidator.sanitize_filename(file.filename)
         file_path = UPLOAD_DIR / safe_filename
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         # Extract file extension (IMPORTANT for S3 folder organization)
-        file_extension = file_path.suffix.lstrip('.').lower()  # pdf, txt, md, docx, etc.
+        file_extension = file_path.suffix.lstrip(".").lower()  # pdf, txt, md, docx, etc.
 
         # NEW: Compute unique document ID from file contents
         doc_id = None
@@ -250,8 +267,8 @@ async def upload_document(file: UploadFile = File(...)):
                     cached_data = cache_service.load_chunks_and_embeddings(doc_id, file_extension)
 
                     if cached_data:
-                        chunks = cached_data['chunks']
-                        embeddings = cached_data['embeddings']
+                        chunks = cached_data["chunks"]
+                        embeddings = cached_data["embeddings"]
                         cache_hit = True
                         logger.info(f"Loaded {len(chunks)} chunks from cache, skipping processing")
                     else:
@@ -267,16 +284,19 @@ async def upload_document(file: UploadFile = File(...)):
             # Parse and chunk with context-aware approach (Docling with smart merging)
             logger.info(f"Parsing and chunking document with context awareness: {file.filename}")
             from app.services.document_service import parse_and_chunk_with_context
+
             chunks = parse_and_chunk_with_context(
                 str(file_path),
                 chunk_size=settings.CHUNK_SIZE,
-                min_chunk_size=settings.MIN_CHUNK_SIZE
+                min_chunk_size=settings.MIN_CHUNK_SIZE,
             )
-            logger.info(f"Created {len(chunks)} context-aware chunks (target {settings.MIN_CHUNK_SIZE}-{settings.CHUNK_SIZE} tokens)")
+            logger.info(
+                f"Created {len(chunks)} context-aware chunks (target {settings.MIN_CHUNK_SIZE}-{settings.CHUNK_SIZE} tokens)"
+            )
 
             # Generate embeddings
             logger.info(f"Generating embeddings for {len(chunks)} chunks...")
-            texts = [chunk['text'] for chunk in chunks]
+            texts = [chunk["text"] for chunk in chunks]
             embeddings, embedding_usage = await embedding_service.generate_embeddings(texts)
 
             # NEW: Save to cache if cache service is available
@@ -284,9 +304,7 @@ async def upload_document(file: UploadFile = File(...)):
                 try:
                     # Save original document to storage (NEW)
                     cache_service.save_document(
-                        doc_id=doc_id,
-                        file_path=file_path,
-                        file_extension=file_extension
+                        doc_id=doc_id, file_path=file_path, file_extension=file_extension
                     )
                     logger.info(f"Saved original document to storage: {doc_id}")
 
@@ -300,7 +318,7 @@ async def upload_document(file: UploadFile = File(...)):
                         "embedding_model": "text-embedding-3-small",
                         "chunk_size": settings.CHUNK_SIZE,
                         "chunk_overlap": settings.CHUNK_OVERLAP,
-                        "file_extension": file_extension  # NEW: include file extension
+                        "file_extension": file_extension,  # NEW: include file extension
                     }
 
                     # Save chunks, embeddings, and metadata to cache (pass file_extension)
@@ -309,7 +327,7 @@ async def upload_document(file: UploadFile = File(...)):
                         file_extension=file_extension,  # NEW parameter
                         chunks=chunks,
                         embeddings=embeddings,
-                        metadata=metadata
+                        metadata=metadata,
                     )
                     logger.info(f"Saved cache data (chunks, embeddings, metadata): {doc_id}")
 
@@ -320,10 +338,7 @@ async def upload_document(file: UploadFile = File(...)):
         # Store in Pinecone (always, even on cache hit - in case vector DB was cleared)
         logger.info(f"Storing {len(chunks)} vectors in Pinecone...")
         vector_service.add_documents(
-            chunks=chunks,
-            embeddings=embeddings,
-            filename=file.filename,
-            namespace="default"
+            chunks=chunks, embeddings=embeddings, filename=file.filename, namespace="default"
         )
 
         # NEW: Smart cache invalidation - clear RAG cache when new document added
@@ -332,7 +347,9 @@ async def upload_document(file: UploadFile = File(...)):
             try:
                 deleted = query_cache_service.delete("rag:*")
                 if deleted > 0:
-                    logger.info(f"✓ Invalidated RAG cache ({deleted} keys) due to new document upload")
+                    logger.info(
+                        f"✓ Invalidated RAG cache ({deleted} keys) due to new document upload"
+                    )
                 else:
                     logger.debug("No RAG cache keys to invalidate")
             except Exception as e:
@@ -340,7 +357,7 @@ async def upload_document(file: UploadFile = File(...)):
                 logger.warning(f"Failed to invalidate RAG cache (continuing anyway): {e}")
 
         file_size = file_path.stat().st_size
-        total_tokens = sum(chunk['token_count'] for chunk in chunks)
+        total_tokens = sum(chunk["token_count"] for chunk in chunks)
         # file_extension already defined earlier (line 218)
 
         # Update OPIK span with metadata for observability
@@ -352,7 +369,7 @@ async def upload_document(file: UploadFile = File(...)):
                     tags=[
                         "document_upload",
                         f"extension_{file_extension}",
-                        "cache_hit" if cache_hit else "cache_miss"
+                        "cache_hit" if cache_hit else "cache_miss",
                     ],
                     metadata={
                         "filename": file.filename,
@@ -361,8 +378,8 @@ async def upload_document(file: UploadFile = File(...)):
                         "file_extension": file_extension,
                         "chunk_count": len(chunks),
                         "total_tokens": total_tokens,
-                        "cache_hit": cache_hit
-                    }
+                        "cache_hit": cache_hit,
+                    },
                 )
             except Exception as e:
                 logger.warning(f"Failed to update OPIK span: {e}")
@@ -392,18 +409,14 @@ async def upload_document(file: UploadFile = File(...)):
                 f"Document loaded from cache and {len(chunks)} chunks stored in Pinecone"
                 if cache_hit
                 else f"Document processed and {len(chunks)} chunks stored in Pinecone"
-            )
+            ),
         }
 
     except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse.validation_error(str(e))
-        )
+        raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e)))
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("upload document", e)
+            status_code=500, detail=ErrorResponse.internal_error("upload document", e)
         )
 
 
@@ -431,27 +444,20 @@ async def query_documents(question: str, top_k: int = 3):
         question = QueryValidator.validate_question(question)
         top_k = QueryValidator.validate_top_k(top_k)
     except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse.validation_error(str(e))
-        )
+        raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e)))
 
     # Check if service is initialized
     if not rag_service:
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "RAG service",
-                "Please configure OPENAI_API_KEY and PINECONE_API_KEY in .env"
-            )
+                "RAG service", "Please configure OPENAI_API_KEY and PINECONE_API_KEY in .env"
+            ),
         )
 
     try:
         result = await rag_service.generate_answer(
-            question=question,
-            top_k=top_k,
-            namespace="default",
-            include_sources=True
+            question=question, top_k=top_k, namespace="default", include_sources=True
         )
 
         # Update OPIK span with metadata and cost tracking
@@ -459,26 +465,27 @@ async def query_documents(question: str, top_k: int = 3):
             try:
                 from opik.opik_context import update_current_span
 
-                usage_data = result.get('usage')
+                usage_data = result.get("usage")
 
                 span_update = {
                     "tags": ["document_query", f"top_k_{top_k}"],
                     "metadata": {
                         "question_length": len(question),
                         "top_k": top_k,
-                        "chunks_retrieved": result.get('chunks_used', 0),
-                        "model": result.get('model', 'unknown')
+                        "chunks_retrieved": result.get("chunks_used", 0),
+                        "model": result.get("model", "unknown"),
                     },
                     "model": "gpt-4-turbo-preview",
-                    "provider": "openai"
+                    "provider": "openai",
                 }
 
                 # Add usage data for cost tracking
                 if usage_data:
                     span_update["usage"] = {
-                        "prompt_tokens": usage_data['embedding_tokens'] + usage_data['llm_prompt_tokens'],
-                        "completion_tokens": usage_data['llm_completion_tokens'],
-                        "total_tokens": usage_data['total_tokens']
+                        "prompt_tokens": usage_data["embedding_tokens"]
+                        + usage_data["llm_prompt_tokens"],
+                        "completion_tokens": usage_data["llm_completion_tokens"],
+                        "total_tokens": usage_data["total_tokens"],
                     }
 
                 update_current_span(**span_update)
@@ -489,8 +496,7 @@ async def query_documents(question: str, top_k: int = 3):
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("query documents", e)
+            status_code=500, detail=ErrorResponse.internal_error("query documents", e)
         )
 
 
@@ -505,17 +511,18 @@ async def list_documents():
     try:
         documents = []
         for file_path in UPLOAD_DIR.iterdir():
-            if file_path.is_file() and not file_path.name.startswith('.'):
-                documents.append({
-                    "filename": file_path.name,
-                    "size_bytes": file_path.stat().st_size,
-                    "uploaded_at": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
-                })
+            if file_path.is_file() and not file_path.name.startswith("."):
+                documents.append(
+                    {
+                        "filename": file_path.name,
+                        "size_bytes": file_path.stat().st_size,
+                        "uploaded_at": datetime.fromtimestamp(
+                            file_path.stat().st_mtime
+                        ).isoformat(),
+                    }
+                )
 
-        return {
-            "total_documents": len(documents),
-            "documents": documents
-        }
+        return {"total_documents": len(documents), "documents": documents}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
@@ -539,12 +546,14 @@ async def get_stats():
         total_size = 0
 
         for file_path in UPLOAD_DIR.iterdir():
-            if file_path.is_file() and not file_path.name.startswith('.'):
+            if file_path.is_file() and not file_path.name.startswith("."):
                 file_size = file_path.stat().st_size
-                documents.append({
-                    "filename": file_path.name,
-                    "size_bytes": file_size,
-                })
+                documents.append(
+                    {
+                        "filename": file_path.name,
+                        "size_bytes": file_size,
+                    }
+                )
                 total_size += file_size
 
         # Get pending SQL queries count
@@ -580,7 +589,7 @@ async def get_stats():
                     "enabled": True,
                     "by_type": stats["cache_types"],
                     "total_estimated_savings": f"${total_cost_saved:.4f}",
-                    "overall_hit_rate": f"{(sum(c['hits'] for c in stats['cache_types'].values()) / max(sum(c['total_queries'] for c in stats['cache_types'].values()), 1) * 100):.1f}%"
+                    "overall_hit_rate": f"{(sum(c['hits'] for c in stats['cache_types'].values()) / max(sum(c['total_queries'] for c in stats['cache_types'].values()), 1) * 100):.1f}%",
                 }
             except Exception as e:
                 logger.warning(f"Failed to get query cache stats: {e}")
@@ -588,7 +597,7 @@ async def get_stats():
         else:
             cache_stats = {
                 "enabled": False,
-                "message": "Query cache not configured (set UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN to enable)"
+                "message": "Query cache not configured (set UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN to enable)",
             }
 
         return {
@@ -610,19 +619,22 @@ async def get_stats():
                 "chunk_size": settings.CHUNK_SIZE,
                 "chunk_overlap": settings.CHUNK_OVERLAP,
                 "max_file_size": format_file_size(FileValidator.MAX_FILE_SIZE),
-                "cache_ttl": {
-                    "rag": f"{settings.CACHE_TTL_RAG}s",
-                    "embeddings": f"{settings.CACHE_TTL_EMBEDDINGS}s",
-                    "sql_generation": f"{settings.CACHE_TTL_SQL_GEN}s",
-                    "sql_results": f"{settings.CACHE_TTL_SQL_RESULT}s"
-                } if query_cache_service and query_cache_service.enabled else "disabled"
-            }
+                "cache_ttl": (
+                    {
+                        "rag": f"{settings.CACHE_TTL_RAG}s",
+                        "embeddings": f"{settings.CACHE_TTL_EMBEDDINGS}s",
+                        "sql_generation": f"{settings.CACHE_TTL_SQL_GEN}s",
+                        "sql_results": f"{settings.CACHE_TTL_SQL_RESULT}s",
+                    }
+                    if query_cache_service and query_cache_service.enabled
+                    else "disabled"
+                ),
+            },
         }
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("get statistics", e)
+            status_code=500, detail=ErrorResponse.internal_error("get statistics", e)
         )
 
 
@@ -640,9 +652,8 @@ async def get_cache_stats():
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "Cache service",
-                "Cache service not initialized"
-            )
+                "Cache service", "Cache service not initialized"
+            ),
         )
 
     try:
@@ -650,18 +661,17 @@ async def get_cache_stats():
         return {
             "status": "success",
             "cache_stats": stats,
-            "message": f"Cache contains {stats['total_documents']} documents"
+            "message": f"Cache contains {stats['total_documents']} documents",
         }
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("get cache stats", e)
+            status_code=500, detail=ErrorResponse.internal_error("get cache stats", e)
         )
 
 
 @app.delete("/cache/clear", status_code=status.HTTP_200_OK, tags=["Cache"])
-async def clear_cache(document_id: Optional[str] = None):
+async def clear_cache(document_id: str | None = None):
     """
     Clear cache for specific document or entire cache.
 
@@ -677,24 +687,17 @@ async def clear_cache(document_id: Optional[str] = None):
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "Cache service",
-                "Cache service not initialized"
-            )
+                "Cache service", "Cache service not initialized"
+            ),
         )
 
     try:
         result = cache_service.clear_cache(doc_id=document_id)
 
-        return {
-            "status": "success" if result['cleared'] else "failed",
-            **result
-        }
+        return {"status": "success" if result["cleared"] else "failed", **result}
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("clear cache", e)
-        )
+        raise HTTPException(status_code=500, detail=ErrorResponse.internal_error("clear cache", e))
 
 
 @app.get("/cache/query/stats", status_code=status.HTTP_200_OK, tags=["Query Cache"])
@@ -717,9 +720,8 @@ async def get_query_cache_stats():
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "Query cache service",
-                "Query cache service not initialized"
-            )
+                "Query cache service", "Query cache service not initialized"
+            ),
         )
 
     try:
@@ -745,18 +747,17 @@ async def get_query_cache_stats():
             "status": "success",
             "cache_stats": stats,
             "total_estimated_savings": f"${total_savings:.4f}",
-            "message": "Query cache enabled" if stats["enabled"] else "Query cache disabled"
+            "message": "Query cache enabled" if stats["enabled"] else "Query cache disabled",
         }
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("get query cache stats", e)
+            status_code=500, detail=ErrorResponse.internal_error("get query cache stats", e)
         )
 
 
 @app.delete("/cache/query", status_code=status.HTTP_200_OK, tags=["Query Cache"])
-async def clear_query_cache(cache_type: Optional[str] = None):
+async def clear_query_cache(cache_type: str | None = None):
     """
     Clear query cache (all types or specific type).
 
@@ -778,15 +779,14 @@ async def clear_query_cache(cache_type: Optional[str] = None):
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "Query cache service",
-                "Query cache service not initialized"
-            )
+                "Query cache service", "Query cache service not initialized"
+            ),
         )
 
     if not query_cache_service.enabled:
         return {
             "status": "disabled",
-            "message": "Query cache is not enabled (Redis not configured)"
+            "message": "Query cache is not enabled (Redis not configured)",
         }
 
     try:
@@ -799,8 +799,8 @@ async def clear_query_cache(cache_type: Optional[str] = None):
                     status_code=400,
                     detail=ErrorResponse.validation_error(
                         f"Invalid cache_type. Must be one of: {', '.join(valid_types)}",
-                        field="cache_type"
-                    )
+                        field="cache_type",
+                    ),
                 )
             pattern = f"{cache_type}:*"
             message = f"Cleared {cache_type} cache"
@@ -818,7 +818,7 @@ async def clear_query_cache(cache_type: Optional[str] = None):
             return {
                 "status": "success",
                 "keys_deleted": total_deleted,
-                "message": f"Cleared all query caches ({total_deleted} keys deleted)"
+                "message": f"Cleared all query caches ({total_deleted} keys deleted)",
             }
 
         # Delete specific cache type
@@ -828,15 +828,14 @@ async def clear_query_cache(cache_type: Optional[str] = None):
             "status": "success",
             "cache_type": cache_type,
             "keys_deleted": deleted,
-            "message": message
+            "message": message,
         }
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=ErrorResponse.internal_error("clear query cache", e)
+            status_code=500, detail=ErrorResponse.internal_error("clear query cache", e)
         )
 
 
@@ -864,7 +863,7 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
         result = {
             "question": question,
             "route": route_type,
-            "routing_explanation": QueryRouter.explain_routing(question)
+            "routing_explanation": QueryRouter.explain_routing(question),
         }
 
         # Update OPIK span with routing metadata
@@ -876,14 +875,14 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
                     tags=[
                         "unified_query",
                         f"route_{route_type.lower()}",
-                        "auto_approve" if auto_approve_sql else "manual_approve"
+                        "auto_approve" if auto_approve_sql else "manual_approve",
                     ],
                     metadata={
                         "question_length": len(question),
                         "route_type": route_type,
                         "auto_approve_sql": auto_approve_sql,
-                        "top_k": top_k
-                    }
+                        "top_k": top_k,
+                    },
                 )
             except Exception as e:
                 logger.warning(f"Failed to update OPIK span: {e}")
@@ -900,7 +899,9 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
             try:
                 if workflow_type == "fishbone":
                     analysis = await wf.run_fishbone(question)
-                    result.update({"workflow": "fishbone", "fishbone": analysis, "status": "completed"})
+                    result.update(
+                        {"workflow": "fishbone", "fishbone": analysis, "status": "completed"}
+                    )
                 elif workflow_type == "8d":
                     draft = await wf.run_draft("8d", question, None)
                     result.update({"workflow": "draft_8d", "draft": draft, "status": "completed"})
@@ -909,10 +910,14 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
                     result.update({"workflow": "draft_capa", "draft": draft, "status": "completed"})
                 else:
                     analysis = await wf.run_five_why(question)
-                    result.update({"workflow": "five_why", "analysis": analysis, "status": "completed"})
+                    result.update(
+                        {"workflow": "five_why", "analysis": analysis, "status": "completed"}
+                    )
             except Exception:
                 logger.exception("Agent workflow failed in unified_query (type=%s)", workflow_type)
-                raise HTTPException(status_code=500, detail=f"Quality workflow '{workflow_type}' failed")
+                raise HTTPException(
+                    status_code=500, detail=f"Quality workflow '{workflow_type}' failed"
+                )
             return result
 
         # Route to SQL
@@ -920,7 +925,7 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
             if not sql_service:
                 raise HTTPException(
                     status_code=503,
-                    detail="SQL service not initialized. Please configure DATABASE_URL in .env file."
+                    detail="SQL service not initialized. Please configure DATABASE_URL in .env file.",
                 )
 
             # Generate SQL
@@ -929,55 +934,57 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
             if auto_approve_sql:
                 # Auto-execute for testing
                 execution_result = await sql_service.execute_approved_query(
-                    sql_result['query_id'],
-                    approved=True
+                    sql_result["query_id"], approved=True
                 )
 
                 # Check if execution failed
-                if execution_result.get('status') == 'error':
+                if execution_result.get("status") == "error":
                     raise HTTPException(
                         status_code=500,
-                        detail=f"SQL execution failed: {execution_result.get('error', 'Unknown error')}"
+                        detail=f"SQL execution failed: {execution_result.get('error', 'Unknown error')}",
                     )
 
-                result.update({
-                    "sql": execution_result['sql'],
-                    "results": execution_result['results'],
-                    "result_count": execution_result['result_count'],
-                    "status": "executed",
-                    "note": "SQL auto-executed (testing mode)"
-                })
+                result.update(
+                    {
+                        "sql": execution_result["sql"],
+                        "results": execution_result["results"],
+                        "result_count": execution_result["result_count"],
+                        "status": "executed",
+                        "note": "SQL auto-executed (testing mode)",
+                    }
+                )
             else:
                 # Return for approval
-                result.update({
-                    "query_id": sql_result['query_id'],
-                    "sql": sql_result['sql'],
-                    "explanation": sql_result['explanation'],
-                    "status": "pending_approval",
-                    "note": "Use POST /query/sql/execute with this query_id to execute"
-                })
+                result.update(
+                    {
+                        "query_id": sql_result["query_id"],
+                        "sql": sql_result["sql"],
+                        "explanation": sql_result["explanation"],
+                        "status": "pending_approval",
+                        "note": "Use POST /query/sql/execute with this query_id to execute",
+                    }
+                )
 
         # Route to Documents
         elif route_type == "DOCUMENTS":
             if not rag_service:
                 raise HTTPException(
                     status_code=503,
-                    detail="RAG service not initialized. Please configure API keys in .env file."
+                    detail="RAG service not initialized. Please configure API keys in .env file.",
                 )
 
             rag_result = await rag_service.generate_answer(
-                question=question,
-                top_k=top_k,
-                namespace="default",
-                include_sources=True
+                question=question, top_k=top_k, namespace="default", include_sources=True
             )
 
-            result.update({
-                "answer": rag_result['answer'],
-                "sources": rag_result.get('sources', []),
-                "chunks_used": rag_result.get('chunks_used', 0),
-                "status": "completed"
-            })
+            result.update(
+                {
+                    "answer": rag_result["answer"],
+                    "sources": rag_result.get("sources", []),
+                    "chunks_used": rag_result.get("chunks_used", 0),
+                    "status": "completed",
+                }
+            )
 
         # Route to HYBRID (both SQL and Documents)
         elif route_type == "HYBRID":
@@ -991,7 +998,7 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
 
                 raise HTTPException(
                     status_code=503,
-                    detail=f"HYBRID query requires both services. Missing: {', '.join(missing_services)}"
+                    detail=f"HYBRID query requires both services. Missing: {', '.join(missing_services)}",
                 )
 
             # Get SQL results
@@ -999,42 +1006,40 @@ async def unified_query(question: str, auto_approve_sql: bool = False, top_k: in
 
             if auto_approve_sql:
                 execution_result = await sql_service.execute_approved_query(
-                    sql_result['query_id'],
-                    approved=True
+                    sql_result["query_id"], approved=True
                 )
                 sql_data = {
-                    "sql": execution_result['sql'],
-                    "results": execution_result['results'],
-                    "result_count": execution_result['result_count'],
-                    "status": "executed"
+                    "sql": execution_result["sql"],
+                    "results": execution_result["results"],
+                    "result_count": execution_result["result_count"],
+                    "status": "executed",
                 }
             else:
                 sql_data = {
-                    "query_id": sql_result['query_id'],
-                    "sql": sql_result['sql'],
-                    "explanation": sql_result['explanation'],
-                    "status": "pending_approval"
+                    "query_id": sql_result["query_id"],
+                    "sql": sql_result["sql"],
+                    "explanation": sql_result["explanation"],
+                    "status": "pending_approval",
                 }
 
             # Get document context
             rag_result = await rag_service.generate_answer(
-                question=question,
-                top_k=top_k,
-                namespace="default",
-                include_sources=True
+                question=question, top_k=top_k, namespace="default", include_sources=True
             )
 
             # Combine both results
-            result.update({
-                "sql_component": sql_data,
-                "document_component": {
-                    "answer": rag_result['answer'],
-                    "sources": rag_result.get('sources', []),
-                    "chunks_used": rag_result.get('chunks_used', 0)
-                },
-                "status": "completed" if auto_approve_sql else "partial_pending_sql_approval",
-                "note": "HYBRID query combines both SQL data and document context"
-            })
+            result.update(
+                {
+                    "sql_component": sql_data,
+                    "document_component": {
+                        "answer": rag_result["answer"],
+                        "sources": rag_result.get("sources", []),
+                        "chunks_used": rag_result.get("chunks_used", 0),
+                    },
+                    "status": "completed" if auto_approve_sql else "partial_pending_sql_approval",
+                    "note": "HYBRID query combines both SQL data and document context",
+                }
+            )
 
         return result
 
@@ -1062,7 +1067,7 @@ async def generate_sql(question: str):
     if not sql_service:
         raise HTTPException(
             status_code=503,
-            detail="SQL service not initialized. Please configure DATABASE_URL in .env file."
+            detail="SQL service not initialized. Please configure DATABASE_URL in .env file.",
         )
 
     try:
@@ -1077,12 +1082,12 @@ async def generate_sql(question: str):
                     tags=["sql_generation", "text_to_sql"],
                     metadata={
                         "question_length": len(question),
-                        "sql_length": len(result.get('sql', '')),
-                        "query_id": result.get('query_id'),
-                        "model": settings.VANNA_MODEL
+                        "sql_length": len(result.get("sql", "")),
+                        "query_id": result.get("query_id"),
+                        "model": settings.VANNA_MODEL,
                     },
                     model=settings.VANNA_MODEL,
-                    provider="openai"
+                    provider="openai",
                 )
             except Exception as e:
                 logger.warning(f"Failed to update OPIK span: {e}")
@@ -1111,14 +1116,14 @@ async def execute_sql(query_id: str, approved: bool = True):
     if not sql_service:
         raise HTTPException(
             status_code=503,
-            detail="SQL service not initialized. Please configure DATABASE_URL in .env file."
+            detail="SQL service not initialized. Please configure DATABASE_URL in .env file.",
         )
 
     try:
         result = await sql_service.execute_approved_query(query_id, approved)
 
-        if result.get('status') == 'error':
-            raise HTTPException(status_code=400, detail=result.get('error', 'Unknown error'))
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("error", "Unknown error"))
 
         # Update OPIK span with metadata
         if OPIK_AVAILABLE:
@@ -1126,16 +1131,13 @@ async def execute_sql(query_id: str, approved: bool = True):
                 from opik.opik_context import update_current_span
 
                 update_current_span(
-                    tags=[
-                        "sql_execution",
-                        "approved" if approved else "rejected"
-                    ],
+                    tags=["sql_execution", "approved" if approved else "rejected"],
                     metadata={
                         "query_id": query_id,
                         "approved": approved,
-                        "result_count": result.get('result_count', 0),
-                        "status": result.get('status')
-                    }
+                        "result_count": result.get("result_count", 0),
+                        "status": result.get("status"),
+                    },
                 )
             except Exception as e:
                 logger.warning(f"Failed to update OPIK span: {e}")
@@ -1159,17 +1161,11 @@ async def list_pending_sql_queries():
     global sql_service
 
     if not sql_service:
-        raise HTTPException(
-            status_code=503,
-            detail="SQL service not initialized."
-        )
+        raise HTTPException(status_code=503, detail="SQL service not initialized.")
 
     try:
         pending = sql_service.get_pending_queries()
-        return {
-            "total_pending": len(pending),
-            "pending_queries": pending
-        }
+        return {"total_pending": len(pending), "pending_queries": pending}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list pending queries: {str(e)}")
@@ -1204,6 +1200,7 @@ def initialize_services():
             if settings.OPIK_API_KEY:
                 logger.info("Initializing OPIK monitoring...")
                 from opik import configure
+
                 configure(api_key=settings.OPIK_API_KEY)
                 logger.info("✓ OPIK monitoring initialized!")
             else:
@@ -1218,16 +1215,21 @@ def initialize_services():
     try:
         logger.info("Initializing query cache service (Redis)...")
         query_cache_service = QueryCacheService(
-            redis_url=settings.UPSTASH_REDIS_URL,
-            redis_token=settings.UPSTASH_REDIS_TOKEN
+            redis_url=settings.UPSTASH_REDIS_URL, redis_token=settings.UPSTASH_REDIS_TOKEN
         )
         if query_cache_service.enabled:
             logger.info("✓ Query cache service initialized and connected!")
-            logger.info(f"  Cache TTL: RAG={settings.CACHE_TTL_RAG}s, Embeddings={settings.CACHE_TTL_EMBEDDINGS}s, "
-                       f"SQL Gen={settings.CACHE_TTL_SQL_GEN}s, SQL Results={settings.CACHE_TTL_SQL_RESULT}s")
+            logger.info(
+                f"  Cache TTL: RAG={settings.CACHE_TTL_RAG}s, Embeddings={settings.CACHE_TTL_EMBEDDINGS}s, "
+                f"SQL Gen={settings.CACHE_TTL_SQL_GEN}s, SQL Results={settings.CACHE_TTL_SQL_RESULT}s"
+            )
         else:
-            logger.info("Query cache service initialized but disabled (credentials not configured).")
-            logger.info("App will continue without query caching. Set UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN to enable.")
+            logger.info(
+                "Query cache service initialized but disabled (credentials not configured)."
+            )
+            logger.info(
+                "App will continue without query caching. Set UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN to enable."
+            )
     except Exception as e:
         logger.error(f"✗ Failed to initialize query cache service: {e}")
         logger.warning("Query caching will be unavailable but app will continue normally.")
@@ -1236,7 +1238,9 @@ def initialize_services():
     try:
         if settings.OPENAI_API_KEY and settings.PINECONE_API_KEY:
             logger.info("Initializing Document RAG services...")
-            embedding_service = EmbeddingService(query_cache_service=query_cache_service)  # Pass cache service
+            embedding_service = EmbeddingService(
+                query_cache_service=query_cache_service
+            )  # Pass cache service
             vector_service = VectorService()
             vector_service.connect_to_index()
             rag_service = RAGService(query_cache_service=query_cache_service)
@@ -1253,7 +1257,9 @@ def initialize_services():
     try:
         if settings.DATABASE_URL and settings.OPENAI_API_KEY:
             logger.info("Initializing Text-to-SQL service...")
-            sql_service = TextToSQLService(query_cache_service=query_cache_service)  # Pass cache service
+            sql_service = TextToSQLService(
+                query_cache_service=query_cache_service
+            )  # Pass cache service
             logger.info("Training Vanna on database schema and examples...")
             sql_service.complete_training()
             logger.info("✓ Text-to-SQL service initialized and trained!")

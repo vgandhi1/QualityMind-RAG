@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from openai import AsyncOpenAI
@@ -17,14 +17,14 @@ from app.config import settings
 from app.services.quality_data_service import get_quality_data_service
 from app.services.quality_langgraph import get_quality_workflows
 from app.services.service_registry import get_rag_service
-from app.utils import QueryValidator, ValidationError, ErrorResponse
+from app.utils import ErrorResponse, QueryValidator, ValidationError
 
 logger = logging.getLogger("rag_app.quality_routes")
 
 router = APIRouter(prefix="/quality", tags=["Quality"])
 
 # Module-level OpenAI client singleton for SPC narrative generation
-_narrative_client: Optional[AsyncOpenAI] = None
+_narrative_client: AsyncOpenAI | None = None
 
 
 def _get_narrative_client() -> AsyncOpenAI:
@@ -40,12 +40,12 @@ class ProblemBody(BaseModel):
 
 class FishboneBody(BaseModel):
     effect: str = Field(..., min_length=3, max_length=2000)
-    station: Optional[str] = Field(None, max_length=120)
+    station: str | None = Field(None, max_length=120)
 
 
 class DraftBody(BaseModel):
     problem_statement: str = Field(..., min_length=3, max_length=2000)
-    part_number: Optional[str] = Field(None, max_length=64)
+    part_number: str | None = Field(None, max_length=64)
 
 
 class PfmeaSearchBody(BaseModel):
@@ -54,14 +54,14 @@ class PfmeaSearchBody(BaseModel):
 
 
 class NcrHistoryBody(BaseModel):
-    part_number: Optional[str] = Field(None, max_length=64)
+    part_number: str | None = Field(None, max_length=64)
     limit: int = Field(100, ge=1, le=500)
 
 
 class SpcSummaryBody(BaseModel):
     part_number: str = Field(..., min_length=1, max_length=64)
-    characteristic: Optional[str] = Field(None, max_length=200)
-    station: Optional[str] = Field(None, max_length=120)
+    characteristic: str | None = Field(None, max_length=200)
+    station: str | None = Field(None, max_length=120)
 
 
 def _validate_question(text: str) -> str:
@@ -146,7 +146,7 @@ async def draft_8d(body: DraftBody) -> dict[str, Any]:
 
 @router.get("/capa-status", status_code=status.HTTP_200_OK)
 async def capa_status(
-    supplier_id: Optional[int] = Query(None, ge=1),
+    supplier_id: int | None = Query(None, ge=1),
     overdue_only: bool = Query(False),
     limit: int = Query(100, ge=1, le=500),
 ) -> dict[str, Any]:
@@ -156,7 +156,8 @@ async def capa_status(
         raise HTTPException(
             status_code=503,
             detail=ErrorResponse.service_unavailable(
-                "Quality database", "Configure DATABASE_URL and apply schema/seed scripts.",
+                "Quality database",
+                "Configure DATABASE_URL and apply schema/seed scripts.",
             ),
         )
     try:
@@ -182,7 +183,9 @@ async def pfmea_search(body: PfmeaSearchBody) -> dict[str, Any]:
     except RuntimeError:
         raise HTTPException(
             status_code=503,
-            detail=ErrorResponse.service_unavailable("RAG service", "Configure OpenAI and Pinecone."),
+            detail=ErrorResponse.service_unavailable(
+                "RAG service", "Configure OpenAI and Pinecone."
+            ),
         )
     try:
         chunks = await rag.get_similar_chunks(question=body.query, top_k=body.top_k)
@@ -209,7 +212,9 @@ async def ncr_history(body: NcrHistoryBody) -> dict[str, Any]:
             detail=ErrorResponse.service_unavailable("Quality database", "Configure DATABASE_URL."),
         )
     try:
-        rows = await asyncio.to_thread(svc.ncr_history, part_number=body.part_number, limit=body.limit)
+        rows = await asyncio.to_thread(
+            svc.ncr_history, part_number=body.part_number, limit=body.limit
+        )
         return {"status": "success", "count": len(rows), "ncrs": rows}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=ErrorResponse.validation_error(str(e))) from e

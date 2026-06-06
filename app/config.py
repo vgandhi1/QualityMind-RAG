@@ -4,8 +4,8 @@ Loads environment variables from .env file.
 """
 
 import os
+
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -17,25 +17,28 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ROOT_PATH: str = ""  # Set to "/prod" for API Gateway, empty for local development
 
+    # Optional API key — when set, all routes except /health and OpenAPI require X-API-Key
+    API_KEY: str | None = None
+
     # OpenAI Configuration
-    OPENAI_API_KEY: Optional[str] = None  # Required for embeddings and RAG
+    OPENAI_API_KEY: str | None = None  # Required for embeddings and RAG
 
     # Pinecone Configuration
-    PINECONE_API_KEY: Optional[str] = None  # Required for vector storage
+    PINECONE_API_KEY: str | None = None  # Required for vector storage
     PINECONE_ENVIRONMENT: str = "us-east-1-aws"
     PINECONE_INDEX_NAME: str = "rag-documents"
 
     # Supabase/PostgreSQL Configuration
-    DATABASE_URL: Optional[str] = None  # Required for Text-to-SQL
+    DATABASE_URL: str | None = None  # Required for Text-to-SQL
 
     # Model Configuration — centralised so every service stays in sync
-    RAG_MODEL: str = "gpt-4o"           # Document Q&A
-    AGENT_MODEL: str = "gpt-4o"         # 5-Why / fishbone / CAPA / 8D workflows
+    RAG_MODEL: str = "gpt-4o"  # Document Q&A
+    AGENT_MODEL: str = "gpt-4o"  # 5-Why / fishbone / CAPA / 8D workflows
     NARRATIVE_MODEL: str = "gpt-4o-mini"  # Brief SPC summaries (cost-efficient)
-    RAG_MAX_TOKENS: int = 2000          # Enough for detailed quality answers
+    RAG_MAX_TOKENS: int = 2000  # Enough for detailed quality answers
 
     # OPIK Monitoring
-    OPIK_API_KEY: Optional[str] = None  # Optional for monitoring
+    OPIK_API_KEY: str | None = None  # Optional for monitoring
     OPIK_PROJECT_NAME: str = "Multi-Source-RAG"
 
     # SQL approval workflow
@@ -62,7 +65,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 50
 
     # Storage Backend Configuration
-    STORAGE_BACKEND: str = "s3"  # Options: "local", "s3"
+    STORAGE_BACKEND: str = "local"  # Options: "local", "s3"
 
     # Storage paths (auto-detects Lambda environment)
     @property
@@ -86,14 +89,14 @@ class Settings(BaseSettings):
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are read automatically by boto3
 
     # Upstash Redis Configuration (Query-level caching)
-    UPSTASH_REDIS_URL: Optional[str] = None  # Optional - app works without caching
-    UPSTASH_REDIS_TOKEN: Optional[str] = None  # Optional - app works without caching
+    UPSTASH_REDIS_URL: str | None = None  # Optional - app works without caching
+    UPSTASH_REDIS_TOKEN: str | None = None  # Optional - app works without caching
 
     # Cache TTL Configuration (in seconds)
     CACHE_TTL_EMBEDDINGS: int = 604800  # 7 days - embeddings are static
-    CACHE_TTL_RAG: int = 3600           # 1 hour - may change with new documents
-    CACHE_TTL_SQL_GEN: int = 86400      # 24 hours - schema relatively stable
-    CACHE_TTL_SQL_RESULT: int = 900     # 15 minutes - data changes frequently
+    CACHE_TTL_RAG: int = 3600  # 1 hour - may change with new documents
+    CACHE_TTL_SQL_GEN: int = 86400  # 24 hours - schema relatively stable
+    CACHE_TTL_SQL_RESULT: int = 900  # 15 minutes - data changes frequently
 
     @property
     def is_lambda(self) -> bool:

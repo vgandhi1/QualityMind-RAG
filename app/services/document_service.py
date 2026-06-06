@@ -5,12 +5,13 @@ Handles parsing and chunking of various document formats (PDF, DOCX, CSV, JSON).
 Now supports context-aware chunking with Docling for improved RAG quality.
 """
 
-from typing import List, Dict, Any
-import re
-import tiktoken
 import logging
-from unstructured.partition.auto import partition
+import re
 from pathlib import Path
+from typing import Any
+
+import tiktoken
+from unstructured.partition.auto import partition
 
 logger = logging.getLogger("rag_app.document_service")
 
@@ -38,15 +39,15 @@ def parse_document(file_path: str) -> str:
     # Fast path for simple text files - bypass unstructured library
     # This is critical for Lambda performance (avoids 30+ second timeout)
     file_extension = Path(file_path).suffix.lower()
-    if file_extension in ['.txt', '.md', '.csv', '.log', '.json']:
+    if file_extension in [".txt", ".md", ".csv", ".log", ".json"]:
         try:
             logger.info(f"Using fast text read for {file_extension} file")
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 return f.read()
         except UnicodeDecodeError:
             # Try with different encoding
             try:
-                with open(file_path, 'r', encoding='latin-1') as f:
+                with open(file_path, encoding="latin-1") as f:
                     return f.read()
             except Exception as e:
                 logger.warning(f"Fast text read failed: {e}, falling back to unstructured")
@@ -59,8 +60,7 @@ def parse_document(file_path: str) -> str:
         # OCR can be enabled by adding tesseract Lambda layer and using strategy="hi_res"
         logger.info(f"Using unstructured library for {file_extension} file")
         elements = partition(
-            filename=file_path,
-            strategy="fast"  # Fast mode: no OCR, works without tesseract
+            filename=file_path, strategy="fast"  # Fast mode: no OCR, works without tesseract
         )
 
         # Combine all elements into a single text string
@@ -76,8 +76,8 @@ def chunk_text(
     text: str,
     chunk_size: int = 512,
     overlap: int = 50,
-    encoding_name: str = "cl100k_base"  # GPT-4 encoding
-) -> List[Dict[str, Any]]:
+    encoding_name: str = "cl100k_base",  # GPT-4 encoding
+) -> list[dict[str, Any]]:
     """
     Split text into overlapping chunks based on token count.
 
@@ -119,7 +119,7 @@ def chunk_text(
         # Calculate character positions (approximate)
         if chunks:
             # For subsequent chunks, use the previous end position
-            start_char = chunks[-1]['end_char'] - (overlap * 4)  # Rough estimate
+            start_char = chunks[-1]["end_char"] - (overlap * 4)  # Rough estimate
             start_char = max(0, start_char)
         else:
             start_char = 0
@@ -128,17 +128,17 @@ def chunk_text(
 
         # Create chunk metadata
         chunk_data = {
-            'text': chunk_text,
-            'chunk_index': len(chunks),
-            'token_count': len(chunk_tokens),
-            'start_char': start_char,
-            'end_char': end_char
+            "text": chunk_text,
+            "chunk_index": len(chunks),
+            "token_count": len(chunk_tokens),
+            "start_char": start_char,
+            "end_char": end_char,
         }
 
         chunks.append(chunk_data)
 
         # Move to next chunk with overlap
-        start_idx += (chunk_size - overlap)
+        start_idx += chunk_size - overlap
 
         # Break if we've reached the end
         if end_idx >= len(tokens):
@@ -147,7 +147,7 @@ def chunk_text(
     return chunks
 
 
-def get_document_stats(file_path: str) -> Dict[str, Any]:
+def get_document_stats(file_path: str) -> dict[str, Any]:
     """
     Get statistics about a document.
 
@@ -175,7 +175,7 @@ def get_document_stats(file_path: str) -> Dict[str, Any]:
         "file_type": path.suffix,
         "character_count": len(text),
         "token_count": len(tokens),
-        "estimated_chunks_512": (len(tokens) // 512) + 1
+        "estimated_chunks_512": (len(tokens) // 512) + 1,
     }
 
 
@@ -183,21 +183,69 @@ _PART_NUMBER_RE = re.compile(r"\b([A-Z]{2,8}-[A-Z0-9]{2,12}(?:-[A-Z0-9]{1,8})*)\
 _RPN_RE = re.compile(r"\bRPN[:\s=]+(\d{1,3})\b", re.IGNORECASE)
 
 _DOC_TYPE_SIGNALS: dict[str, list[str]] = {
-    "pfmea": ["pfmea", "process fmea", "failure mode", "rpn", "occurrence", "detection rating", "severity rating"],
+    "pfmea": [
+        "pfmea",
+        "process fmea",
+        "failure mode",
+        "rpn",
+        "occurrence",
+        "detection rating",
+        "severity rating",
+    ],
     "dfmea": ["dfmea", "design fmea", "design failure"],
     "capa": ["corrective action", "preventive action", "capa", "root cause", "8d"],
-    "8d": ["d1 team", "d2 problem", "d3 containment", "d4 root cause", "d5 permanent", "8-discipline"],
-    "control_plan": ["control plan", "control method", "reaction plan", "sample size", "sample frequency"],
-    "work_instruction": ["work instruction", "step-by-step", "operator instruction", "station instruction"],
+    "8d": [
+        "d1 team",
+        "d2 problem",
+        "d3 containment",
+        "d4 root cause",
+        "d5 permanent",
+        "8-discipline",
+    ],
+    "control_plan": [
+        "control plan",
+        "control method",
+        "reaction plan",
+        "sample size",
+        "sample frequency",
+    ],
+    "work_instruction": [
+        "work instruction",
+        "step-by-step",
+        "operator instruction",
+        "station instruction",
+    ],
     "qms": ["quality manual", "iso 9001", "iatf 16949", "quality policy", "management review"],
     "spc": ["cpk", "cp index", "control chart", "ucl", "lcl", "western electric"],
 }
 
 _QUALITY_KEYWORDS = [
-    "pfmea", "dfmea", "capa", "8d", "ncr", "control plan", "work instruction",
-    "cpk", "cp ", "spc", "rma", "corrective action", "preventive action",
-    "failure mode", "root cause", "containment", "gauge r&r", "ppap", "apqp",
-    "severity", "occurrence", "detection", "rpn", "scrap", "rework", "disposition",
+    "pfmea",
+    "dfmea",
+    "capa",
+    "8d",
+    "ncr",
+    "control plan",
+    "work instruction",
+    "cpk",
+    "cp ",
+    "spc",
+    "rma",
+    "corrective action",
+    "preventive action",
+    "failure mode",
+    "root cause",
+    "containment",
+    "gauge r&r",
+    "ppap",
+    "apqp",
+    "severity",
+    "occurrence",
+    "detection",
+    "rpn",
+    "scrap",
+    "rework",
+    "disposition",
 ]
 
 
@@ -228,7 +276,9 @@ def extract_quality_metadata(text: str, filename: str) -> dict:
     }
 
 
-def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chunk_size: int = 256) -> List[Dict[str, Any]]:
+def parse_and_chunk_with_context(
+    file_path: str, chunk_size: int = 512, min_chunk_size: int = 256
+) -> list[dict[str, Any]]:
     """
     Parse and chunk document using Docling's context-aware approach.
 
@@ -251,7 +301,7 @@ def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chun
     filename = Path(file_path).name
     file_extension = Path(file_path).suffix.lower()
 
-    def _enrich(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enrich(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Attach quality domain metadata to every chunk."""
         for chunk in chunks:
             meta = extract_quality_metadata(chunk["text"], filename)
@@ -259,15 +309,17 @@ def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chun
         return chunks
 
     # Fast path for simple text files — bypass Docling to avoid Lambda timeout
-    if file_extension in ['.txt', '.md', '.csv', '.log', '.json']:
-        logger.info(f"Using fast token-based chunking for {file_extension} file (bypassing Docling)")
+    if file_extension in [".txt", ".md", ".csv", ".log", ".json"]:
+        logger.info(
+            f"Using fast token-based chunking for {file_extension} file (bypassing Docling)"
+        )
         text = parse_document(file_path)
         chunks = chunk_text(text, chunk_size=chunk_size, overlap=50)
         for chunk in chunks:
-            chunk['headings'] = []
-            chunk['page_numbers'] = []
-            chunk['doc_items'] = []
-            chunk['captions'] = []
+            chunk["headings"] = []
+            chunk["page_numbers"] = []
+            chunk["doc_items"] = []
+            chunk["captions"] = []
         logger.info(f"Fast chunking complete: {len(chunks)} chunks")
         return _enrich(chunks)
 
@@ -275,7 +327,9 @@ def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chun
         from app.services.docling_service import parse_and_chunk_document
 
         logger.info(f"Using Docling for context-aware chunking: {filename}")
-        chunks = parse_and_chunk_document(file_path, chunk_size=chunk_size, min_chunk_size=min_chunk_size)
+        chunks = parse_and_chunk_document(
+            file_path, chunk_size=chunk_size, min_chunk_size=min_chunk_size
+        )
         logger.info(f"Docling chunking complete: {len(chunks)} chunks with heading context")
         return _enrich(chunks)
 
@@ -284,10 +338,10 @@ def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chun
         text = parse_document(file_path)
         chunks = chunk_text(text, chunk_size=chunk_size, overlap=50)
         for chunk in chunks:
-            chunk['headings'] = []
-            chunk['page_numbers'] = []
-            chunk['doc_items'] = []
-            chunk['captions'] = []
+            chunk["headings"] = []
+            chunk["page_numbers"] = []
+            chunk["doc_items"] = []
+            chunk["captions"] = []
         logger.info(f"Token-based chunking complete: {len(chunks)} chunks (no context)")
         return _enrich(chunks)
 
@@ -296,9 +350,9 @@ def parse_and_chunk_with_context(file_path: str, chunk_size: int = 512, min_chun
         text = parse_document(file_path)
         chunks = chunk_text(text, chunk_size=chunk_size, overlap=50)
         for chunk in chunks:
-            chunk['headings'] = []
-            chunk['page_numbers'] = []
-            chunk['doc_items'] = []
-            chunk['captions'] = []
+            chunk["headings"] = []
+            chunk["page_numbers"] = []
+            chunk["doc_items"] = []
+            chunk["captions"] = []
         logger.warning(f"Using fallback chunking: {len(chunks)} chunks (no context)")
         return _enrich(chunks)

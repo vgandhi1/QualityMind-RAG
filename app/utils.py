@@ -2,13 +2,18 @@
 Utility functions for validation, error handling, and common operations.
 """
 
-from typing import Optional, List
-from fastapi import HTTPException, UploadFile
+import logging
 import re
+from pathlib import Path
+
+from fastapi import UploadFile
+
+logger = logging.getLogger("rag_app.utils")
 
 
 class ValidationError(Exception):
     """Custom validation error exception."""
+
     pass
 
 
@@ -17,13 +22,13 @@ class FileValidator:
 
     # Allowed file extensions and their MIME types
     ALLOWED_EXTENSIONS = {
-        '.pdf': 'application/pdf',
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.doc': 'application/msword',
-        '.csv': 'text/csv',
-        '.json': 'application/json',
-        '.txt': 'text/plain',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".csv": "text/csv",
+        ".json": "application/json",
+        ".txt": "text/plain",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
 
     # Maximum file size (50 MB)
@@ -44,26 +49,32 @@ class FileValidator:
             raise ValidationError("No file provided or filename is empty")
 
         # Check file extension
-        file_ext = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+        file_ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
 
         if file_ext not in FileValidator.ALLOWED_EXTENSIONS:
-            allowed = ', '.join(FileValidator.ALLOWED_EXTENSIONS.keys())
-            raise ValidationError(
-                f"Invalid file type '{file_ext}'. Allowed types: {allowed}"
-            )
+            allowed = ", ".join(FileValidator.ALLOWED_EXTENSIONS.keys())
+            raise ValidationError(f"Invalid file type '{file_ext}'. Allowed types: {allowed}")
 
         # Check file size (if available)
-        if hasattr(file, 'size') and file.size:
+        if hasattr(file, "size") and file.size:
             if file.size > FileValidator.MAX_FILE_SIZE:
                 max_mb = FileValidator.MAX_FILE_SIZE / (1024 * 1024)
-                raise ValidationError(
-                    f"File size exceeds maximum allowed size of {max_mb:.0f} MB"
-                )
+                raise ValidationError(f"File size exceeds maximum allowed size of {max_mb:.0f} MB")
 
     @staticmethod
     def get_file_extension(filename: str) -> str:
         """Get the file extension from filename."""
-        return '.' + filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        return "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    @staticmethod
+    def sanitize_filename(filename: str) -> str:
+        """Return a basename safe for writing under UPLOAD_DIR."""
+        safe = Path(filename).name
+        if not safe or safe in {".", ".."}:
+            raise ValidationError("Invalid filename")
+        if not re.match(r"^[a-zA-Z0-9._-]+$", safe):
+            raise ValidationError("Filename contains disallowed characters")
+        return safe
 
 
 class QueryValidator:
@@ -75,13 +86,13 @@ class QueryValidator:
 
     # SQL keywords that might indicate dangerous operations
     DANGEROUS_SQL_PATTERNS = [
-        r'\bDROP\s+TABLE\b',
-        r'\bDELETE\s+FROM\b',
-        r'\bTRUNCATE\b',
-        r'\bALTER\s+TABLE\b',
-        r'\bCREATE\s+TABLE\b',
-        r'\bINSERT\s+INTO\b',
-        r'\bUPDATE\s+\w+\s+SET\b'
+        r"\bDROP\s+TABLE\b",
+        r"\bDELETE\s+FROM\b",
+        r"\bTRUNCATE\b",
+        r"\bALTER\s+TABLE\b",
+        r"\bCREATE\s+TABLE\b",
+        r"\bINSERT\s+INTO\b",
+        r"\bUPDATE\s+\w+\s+SET\b",
     ]
 
     @staticmethod
@@ -175,11 +186,11 @@ class QueryValidator:
             Sanitized SQL string
         """
         # Remove SQL comments
-        sql = re.sub(r'--.*$', '', sql, flags=re.MULTILINE)
-        sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+        sql = re.sub(r"--.*$", "", sql, flags=re.MULTILINE)
+        sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
 
         # Normalize whitespace
-        sql = ' '.join(sql.split())
+        sql = " ".join(sql.split())
 
         return sql.strip()
 
@@ -188,19 +199,15 @@ class ErrorResponse:
     """Structured error response generator."""
 
     @staticmethod
-    def validation_error(message: str, field: Optional[str] = None) -> dict:
+    def validation_error(message: str, field: str | None = None) -> dict:
         """Generate validation error response."""
-        response = {
-            "error": "Validation Error",
-            "message": message,
-            "type": "validation_error"
-        }
+        response = {"error": "Validation Error", "message": message, "type": "validation_error"}
         if field:
             response["field"] = field
         return response
 
     @staticmethod
-    def service_unavailable(service_name: str, reason: Optional[str] = None) -> dict:
+    def service_unavailable(service_name: str, reason: str | None = None) -> dict:
         """Generate service unavailable error response."""
         message = f"{service_name} is not available"
         if reason:
@@ -210,17 +217,17 @@ class ErrorResponse:
             "error": "Service Unavailable",
             "message": message,
             "service": service_name,
-            "type": "service_unavailable"
+            "type": "service_unavailable",
         }
 
     @staticmethod
     def internal_error(operation: str, error: Exception) -> dict:
-        """Generate internal error response."""
+        """Generate internal error response (no internal details exposed to clients)."""
+        logger.exception("Internal error during %s", operation)
         return {
             "error": "Internal Error",
-            "message": f"Failed to {operation}",
-            "details": str(error),
-            "type": "internal_error"
+            "message": f"Failed to {operation}. Please try again or contact support.",
+            "type": "internal_error",
         }
 
 
@@ -234,7 +241,7 @@ def format_file_size(size_bytes: int) -> str:
     Returns:
         Formatted string (e.g., "2.5 MB")
     """
-    for unit in ['B', 'KB', 'MB', 'GB']:
+    for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024.0:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
@@ -256,4 +263,4 @@ def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
     if len(text) <= max_length:
         return text
 
-    return text[:max_length - len(suffix)] + suffix
+    return text[: max_length - len(suffix)] + suffix

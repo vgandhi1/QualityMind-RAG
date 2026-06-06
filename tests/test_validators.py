@@ -11,24 +11,31 @@ from app.utils import FileValidator, QueryValidator, ValidationError
 
 # ── SQL safety guard ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("sql", [
-    "DROP TABLE defects;",
-    "delete from capa_log where id = 1",
-    "TRUNCATE ncr",
-    "ALTER TABLE suppliers ADD COLUMN x int",
-    "INSERT INTO defects VALUES (1)",
-    "UPDATE defects SET severity = 1",
-    "CREATE TABLE evil (id int)",
-])
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TABLE defects;",
+        "delete from capa_log where id = 1",
+        "TRUNCATE ncr",
+        "ALTER TABLE suppliers ADD COLUMN x int",
+        "INSERT INTO defects VALUES (1)",
+        "UPDATE defects SET severity = 1",
+        "CREATE TABLE evil (id int)",
+    ],
+)
 def test_dangerous_sql_is_flagged(sql):
     assert QueryValidator.check_dangerous_sql(sql) is True
 
 
-@pytest.mark.parametrize("sql", [
-    "SELECT COUNT(*) FROM capa_log WHERE status = 'open'",
-    "SELECT part_number, cpk FROM inspection_results ORDER BY cpk ASC",
-    "select * from suppliers where quality_rating < 80",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT COUNT(*) FROM capa_log WHERE status = 'open'",
+        "SELECT part_number, cpk FROM inspection_results ORDER BY cpk ASC",
+        "select * from suppliers where quality_rating < 80",
+    ],
+)
 def test_safe_select_is_allowed(sql):
     assert QueryValidator.check_dangerous_sql(sql) is False
 
@@ -38,6 +45,7 @@ def test_guard_is_case_insensitive():
 
 
 # ── Question validation ─────────────────────────────────────────────────────
+
 
 def test_valid_question_is_trimmed():
     assert QueryValidator.validate_question("  how many NCRs?  ") == "how many NCRs?"
@@ -64,6 +72,7 @@ def test_too_long_question_rejected():
 
 # ── top_k validation ────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("value", [1, 5, 10])
 def test_valid_top_k(value):
     assert QueryValidator.validate_top_k(value) == value
@@ -82,6 +91,7 @@ def test_non_int_top_k_rejected():
 
 # ── SQL display sanitization ────────────────────────────────────────────────
 
+
 def test_sanitize_strips_comments_and_normalizes_whitespace():
     raw = "SELECT *  FROM defects -- secret\n/* block */ WHERE id = 1"
     cleaned = QueryValidator.sanitize_sql_for_display(raw)
@@ -90,6 +100,7 @@ def test_sanitize_strips_comments_and_normalizes_whitespace():
 
 
 # ── File validation ─────────────────────────────────────────────────────────
+
 
 class _FakeUpload:
     def __init__(self, filename, size=None):

@@ -5,31 +5,21 @@ Tests both local filesystem and S3 storage implementations to ensure
 they correctly implement the StorageBackend interface.
 """
 
-import pytest
 import numpy as np
-import tempfile
-import shutil
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import pytest
 
 from app.services.local_storage import LocalStorageBackend
 from app.services.s3_storage import S3StorageBackend
 
-
 # Test fixtures
+
 
 @pytest.fixture
 def sample_chunks():
     """Sample document chunks for testing."""
     return [
-        {
-            "text": "This is the first chunk of text.",
-            "metadata": {"page": 1, "tokens": 7}
-        },
-        {
-            "text": "This is the second chunk of text.",
-            "metadata": {"page": 1, "tokens": 7}
-        }
+        {"text": "This is the first chunk of text.", "metadata": {"page": 1, "tokens": 7}},
+        {"text": "This is the second chunk of text.", "metadata": {"page": 1, "tokens": 7}},
     ]
 
 
@@ -46,7 +36,7 @@ def sample_metadata():
         "filename": "test.pdf",
         "cached_at": "2026-01-18T00:00:00Z",
         "total_chunks": 2,
-        "total_tokens": 14
+        "total_tokens": 14,
     }
 
 
@@ -59,6 +49,7 @@ def temp_document(tmp_path):
 
 
 # Tests for LocalStorageBackend
+
 
 class TestLocalStorageBackend:
     """Tests for local filesystem storage backend."""
@@ -136,7 +127,9 @@ class TestLocalStorageBackend:
         # Verify content
         assert saved_doc.read_text() == temp_document.read_text()
 
-    def test_exists_all_files(self, local_storage, sample_chunks, sample_embeddings, sample_metadata):
+    def test_exists_all_files(
+        self, local_storage, sample_chunks, sample_embeddings, sample_metadata
+    ):
         """Test exists() returns True when all files present."""
         doc_id = "test_doc_123"
         file_extension = "pdf"
@@ -222,6 +215,7 @@ class TestLocalStorageBackend:
 
 # Tests for S3StorageBackend (using moto for mocking)
 
+
 class TestS3StorageBackend:
     """Tests for S3 storage backend (mocked with moto)."""
 
@@ -229,22 +223,22 @@ class TestS3StorageBackend:
     def s3_storage(self):
         """Create S3StorageBackend with mocked S3."""
         # Use moto to mock S3
-        from moto import mock_aws
         import boto3
+        from moto import mock_aws
 
         with mock_aws():
             # Create mock S3 bucket
-            s3_client = boto3.client('s3', region_name='us-east-1')
-            s3_client.create_bucket(Bucket='test-bucket')
+            s3_client = boto3.client("s3", region_name="us-east-1")
+            s3_client.create_bucket(Bucket="test-bucket")
 
             # Create S3 storage backend
-            storage = S3StorageBackend(bucket_name='test-bucket')
+            storage = S3StorageBackend(bucket_name="test-bucket")
             yield storage
 
     def test_initialization(self, s3_storage):
         """Test S3StorageBackend initialization."""
-        assert s3_storage.bucket_name == 'test-bucket'
-        assert s3_storage.region == 'us-east-1'
+        assert s3_storage.bucket_name == "test-bucket"
+        assert s3_storage.region == "us-east-1"
 
     def test_save_and_load_chunks(self, s3_storage, sample_chunks):
         """Test saving and loading chunks to S3."""
@@ -294,7 +288,9 @@ class TestS3StorageBackend:
         key = s3_storage._get_s3_key(doc_id, file_extension, f"document.{file_extension}")
         assert s3_storage._object_exists(key)
 
-    def test_exists_all_files(self, s3_storage, sample_chunks, sample_embeddings, sample_metadata, temp_document):
+    def test_exists_all_files(
+        self, s3_storage, sample_chunks, sample_embeddings, sample_metadata, temp_document
+    ):
         """Test exists() returns True when all S3 files present."""
         doc_id = "test_s3_doc"
         file_extension = "pdf"
@@ -322,7 +318,9 @@ class TestS3StorageBackend:
         # Should not exist (missing other files)
         assert not s3_storage.exists(doc_id, file_extension)
 
-    def test_delete(self, s3_storage, sample_chunks, sample_embeddings, sample_metadata, temp_document):
+    def test_delete(
+        self, s3_storage, sample_chunks, sample_embeddings, sample_metadata, temp_document
+    ):
         """Test deleting all S3 files for a document."""
         doc_id = "test_s3_doc"
         file_extension = "pdf"
@@ -398,6 +396,7 @@ class TestS3StorageBackend:
 
 # Integration tests
 
+
 class TestStorageBackendCompatibility:
     """Test that both backends implement the same interface correctly."""
 
@@ -409,15 +408,17 @@ class TestStorageBackendCompatibility:
             # s3 branch below, so a bare return would yield no value.
             yield LocalStorageBackend(cache_dir=tmp_path)
         elif request.param == "s3":
-            from moto import mock_aws
             import boto3
+            from moto import mock_aws
 
             with mock_aws():
-                s3_client = boto3.client('s3', region_name='us-east-1')
-                s3_client.create_bucket(Bucket='test-bucket')
-                yield S3StorageBackend(bucket_name='test-bucket')
+                s3_client = boto3.client("s3", region_name="us-east-1")
+                s3_client.create_bucket(Bucket="test-bucket")
+                yield S3StorageBackend(bucket_name="test-bucket")
 
-    def test_interface_compatibility(self, storage_backend, sample_chunks, sample_embeddings, sample_metadata, temp_document):
+    def test_interface_compatibility(
+        self, storage_backend, sample_chunks, sample_embeddings, sample_metadata, temp_document
+    ):
         """Test that both backends implement the same interface."""
         doc_id = "compat_test"
         file_ext = "pdf"

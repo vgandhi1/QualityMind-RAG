@@ -188,6 +188,19 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by black)
+    "B904",  # raise-without-from: handlers wrap-and-reraise intentionally
+    "E402",  # module-import-not-at-top: SQL service imports follow logger/monkey-patch setup
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI DI helpers are evaluated once at definition time, not per-call.
+extend-immutable-calls = [
+    "fastapi.File",
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Form",
+    "fastapi.Body",
+    "fastapi.Header",
 ]
 
 [tool.ruff.lint.isort]
