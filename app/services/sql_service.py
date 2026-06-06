@@ -29,6 +29,7 @@ except ImportError:
     from vanna.integrations.local.agent_memory import DemoAgentMemory
 
 from app.config import settings
+from app.utils import QueryValidator
 
 
 class SimpleUserResolver(UserResolver):
@@ -620,6 +621,17 @@ LIMIT 20;""",
             }
 
         sql = query_info['sql']
+
+        # Security: block dangerous SQL before any execution path
+        # (covers manual approval, auto_approve_sql bypass, and direct /query/sql/execute)
+        if QueryValidator.check_dangerous_sql(sql):
+            del self.pending_queries[query_id]
+            logger.warning(f"Blocked dangerous SQL in execute_approved_query: '{sql[:80]}...'")
+            return {
+                'query_id': query_id,
+                'status': 'error',
+                'error': 'Query rejected: contains potentially dangerous SQL operations'
+            }
 
         # Check if this is a SELECT query (safe to cache)
         is_select_query = sql.strip().upper().startswith("SELECT")

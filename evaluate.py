@@ -32,7 +32,7 @@ class RAGEvaluator:
     """Evaluates RAG system using RAGAS metrics and agent structural validation."""
 
     def __init__(self):
-        self.test_queries_path = Path("tests/test_queries.json")
+        self.test_queries_path = Path("data/eval/ragas_dataset.json")
         self.results_path = Path("evaluation_results.json")
         self.embedding_service = None
         self.vector_service = None

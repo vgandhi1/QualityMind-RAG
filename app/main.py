@@ -222,8 +222,9 @@ async def upload_document(file: UploadFile = File(...)):
         )
 
     try:
-        # Save uploaded file
-        file_path = UPLOAD_DIR / file.filename
+        # Save uploaded file (sanitize filename to prevent path traversal)
+        safe_filename = Path(file.filename).name
+        file_path = UPLOAD_DIR / safe_filename
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
