@@ -3,6 +3,7 @@ SQL Service - Vanna 2.0 Agent Framework Implementation
 Handles Text-to-SQL conversion using Vanna.ai 2.0 with OpenAI and PostgreSQL.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -232,7 +233,7 @@ class VannaAgentWrapper:
 
         try:
             import socket
-            from urllib.parse import urlparse
+            from urllib.parse import urlparse, urlunparse
 
             import psycopg2
             import psycopg2.extras
@@ -254,8 +255,10 @@ class VannaAgentWrapper:
                 ipv4_address = addr_info[0][4][0]
                 logger.info(f"Resolved {hostname} to IPv4: {ipv4_address}")
 
-                # Replace hostname with IPv4 address in connection string
-                conn_str = conn_str.replace(hostname, ipv4_address)
+                # Replace only the host in netloc (avoid clobbering password/dbname
+                # that may coincidentally contain the hostname substring).
+                netloc = parsed.netloc.replace(hostname, ipv4_address, 1)
+                conn_str = urlunparse(parsed._replace(netloc=netloc))
             except socket.gaierror as e:
                 logger.warning(f"Failed to resolve hostname to IPv4: {e}, using original hostname")
 
@@ -331,6 +334,9 @@ class TextToSQLService:
 
         # Approval workflow state (in-memory, TTL-evicted)
         self.pending_queries: dict[str, dict[str, Any]] = {}
+        # Guards the check-then-mutate sequences on pending_queries against
+        # concurrent coroutines sharing a warm Lambda container.
+        self._pending_lock = asyncio.Lock()
         self._pending_ttl = settings.PENDING_QUERY_TTL_SECONDS
 
         # Training flag
@@ -609,26 +615,28 @@ LIMIT 20;""",
         Returns:
             Dictionary with results or rejection message, plus cache_hit indicator
         """
-        if query_id not in self.pending_queries:
-            return {"error": "Query ID not found", "status": "error"}
+        # Atomically claim the pending query so two concurrent callers cannot
+        # both execute (or one execute while another deletes) the same query_id.
+        async with self._pending_lock:
+            if query_id not in self.pending_queries:
+                return {"error": "Query ID not found", "status": "error"}
 
-        query_info = self.pending_queries[query_id]
+            if not approved:
+                # User rejected the query
+                del self.pending_queries[query_id]
+                return {
+                    "query_id": query_id,
+                    "status": "rejected",
+                    "message": "Query execution cancelled by user",
+                }
 
-        if not approved:
-            # User rejected the query
-            del self.pending_queries[query_id]
-            return {
-                "query_id": query_id,
-                "status": "rejected",
-                "message": "Query execution cancelled by user",
-            }
+            query_info = self.pending_queries.pop(query_id)
 
         sql = query_info["sql"]
 
         # Security: block dangerous SQL before any execution path
         # (covers manual approval, auto_approve_sql bypass, and direct /query/sql/execute)
         if QueryValidator.check_dangerous_sql(sql):
-            del self.pending_queries[query_id]
             logger.warning(f"Blocked dangerous SQL in execute_approved_query: '{sql[:80]}...'")
             return {
                 "query_id": query_id,
@@ -646,9 +654,6 @@ LIMIT 20;""",
 
             if cached_result and "results" in cached_result:
                 logger.info(f"SQL result cache HIT for query: '{sql[:50]}...'")
-
-                # Clean up pending query
-                del self.pending_queries[query_id]
 
                 return {
                     "query_id": query_id,
@@ -679,9 +684,6 @@ LIMIT 20;""",
                     cache_key, cache_value, ttl=ttl, cache_type="sql_result"
                 )
                 logger.info(f"SQL result cache MISS - cached for '{sql[:50]}...' (TTL: {ttl}s)")
-
-            # Clean up pending query
-            del self.pending_queries[query_id]
 
             return {
                 "query_id": query_id,

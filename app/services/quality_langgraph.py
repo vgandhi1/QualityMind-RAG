@@ -19,6 +19,21 @@ from app.utils import QueryValidator
 
 logger = logging.getLogger("rag_app.quality_langgraph")
 
+
+def _safe_json_loads(content: str) -> dict[str, Any]:
+    """Parse LLM JSON output, degrading to an empty dict on malformed responses.
+
+    Even with response_format=json_object the API can return malformed or
+    truncated JSON; an unhandled JSONDecodeError would surface as a 500 with a
+    traceback leaked to the caller.
+    """
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning("LLM returned invalid JSON: %s | content: %s", e, content[:200])
+        return {}
+
+
 _workflows_singleton: QualityLangGraphWorkflows | None = None
 
 
@@ -78,7 +93,7 @@ class QualityLangGraphWorkflows:
         self.sql_service = sql_service
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required for quality agents")
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=25.0, max_retries=2)
         self.model = settings.AGENT_MODEL
 
         # Pre-compile graphs once at startup — avoids expensive recompilation per request
@@ -162,7 +177,7 @@ class QualityLangGraphWorkflows:
             ],
         )
         content = resp.choices[0].message.content or "{}"
-        output = json.loads(content)
+        output = _safe_json_loads(content)
 
         # Clamp confidence_score to [0, 1] in case LLM returns out-of-range value
         if "confidence_score" in output:
@@ -224,7 +239,7 @@ class QualityLangGraphWorkflows:
             ],
         )
         content = resp.choices[0].message.content or "{}"
-        output = json.loads(content)
+        output = _safe_json_loads(content)
 
         # Clamp bone weights to [0, 1]
         for bone_list in output.get("bones", {}).values():
@@ -299,7 +314,7 @@ class QualityLangGraphWorkflows:
             ],
         )
         content = resp.choices[0].message.content or "{}"
-        return {**state, "output": json.loads(content)}
+        return {**state, "output": _safe_json_loads(content)}
 
     def _build_draft_graph(self):
         graph = StateGraph(DraftState)

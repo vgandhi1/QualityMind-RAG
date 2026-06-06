@@ -3,9 +3,11 @@ Manufacturing Quality Engineering Assistant API.
 FastAPI + hybrid RAG / Text-to-SQL; extends sourangshupal/multidata-rag-project (see docs/REFERENCE_MULTIDATA.md).
 """
 
+import asyncio
 import os
 import shutil
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -52,6 +54,21 @@ except ImportError:
         return decorator
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle (replaces deprecated @app.on_event)."""
+    # Lambda uses lambda_handler lazy init (Mangum lifespan off); local runs init here.
+    if os.getenv("AWS_LAMBDA_FUNCTION_NAME") is None:
+        initialize_services()
+    if settings.ENVIRONMENT == "production" and not settings.API_KEY:
+        logger.warning(
+            "API_KEY is not set in production — all endpoints, including destructive "
+            "cache-clear routes, are unauthenticated."
+        )
+    yield
+    logger.info("Shutting down Manufacturing Quality Engineering Assistant...")
+
+
 app = FastAPI(
     title="Manufacturing Quality Engineering Assistant",
     description="Hybrid RAG + Text-to-SQL (multidata-rag base) with PFMEA/CAPA/NCR/8D workflows per plan.md",
@@ -59,6 +76,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     root_path=settings.ROOT_PATH,  # For API Gateway: "/prod", for local: ""
+    lifespan=lifespan,
 )
 
 app.include_router(quality_router)
@@ -242,8 +260,13 @@ async def upload_document(file: UploadFile = File(...)):
         # Save uploaded file (sanitize filename to prevent path traversal)
         safe_filename = FileValidator.sanitize_filename(file.filename)
         file_path = UPLOAD_DIR / safe_filename
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+
+        def _write_upload() -> None:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+        # Offload blocking disk write so a large upload cannot stall the event loop.
+        await asyncio.to_thread(_write_upload)
 
         # Extract file extension (IMPORTANT for S3 folder organization)
         file_extension = file_path.suffix.lstrip(".").lower()  # pdf, txt, md, docx, etc.
@@ -338,7 +361,11 @@ async def upload_document(file: UploadFile = File(...)):
         # Store in Pinecone (always, even on cache hit - in case vector DB was cleared)
         logger.info(f"Storing {len(chunks)} vectors in Pinecone...")
         vector_service.add_documents(
-            chunks=chunks, embeddings=embeddings, filename=file.filename, namespace="default"
+            chunks=chunks,
+            embeddings=embeddings,
+            filename=file.filename,
+            namespace="default",
+            doc_id=doc_id,
         )
 
         # NEW: Smart cache invalidation - clear RAG cache when new document added
@@ -1293,19 +1320,6 @@ def initialize_services():
     logger.info("=" * 60)
     logger.info("API is ready!")
     logger.info("=" * 60)
-
-
-# Local uvicorn runs startup; Lambda uses lambda_handler lazy init (Mangum lifespan off).
-@app.on_event("startup")
-async def startup_event():
-    if os.getenv("AWS_LAMBDA_FUNCTION_NAME") is None:
-        initialize_services()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Execute cleanup tasks on application shutdown."""
-    logger.info("Shutting down Manufacturing Quality Engineering Assistant...")
 
 
 if __name__ == "__main__":

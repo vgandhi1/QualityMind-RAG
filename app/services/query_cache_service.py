@@ -160,12 +160,8 @@ class QueryCacheService:
             if not keys:
                 return 0
 
-            # Delete keys in batches
-            deleted = 0
-            for key in keys:
-                self.client.delete(key)
-                deleted += 1
-
+            # Single round-trip delete instead of one call per key.
+            deleted = self.client.delete(*keys)
             logger.info(f"Cache invalidation: Deleted {deleted} keys matching '{pattern}'")
             return deleted
 

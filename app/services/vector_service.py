@@ -73,6 +73,7 @@ class VectorService:
         embeddings: list[list[float]],
         filename: str,
         namespace: str = "default",
+        doc_id: str | None = None,
     ):
         """
         Store document chunks with their embeddings in Pinecone.
@@ -82,6 +83,8 @@ class VectorService:
             embeddings: List of embedding vectors corresponding to chunks
             filename: Source filename for metadata
             namespace: Pinecone namespace for organization (default: "default")
+            doc_id: Content-hash document ID; used as the vector-ID prefix so two
+                different files sharing a filename do not overwrite each other.
 
         Raises:
             Exception: If upsert fails
@@ -96,9 +99,12 @@ class VectorService:
             # Prepare vectors for upsert
             vectors_to_upsert = []
 
+            # Prefix vector IDs with the content hash when available to avoid
+            # collisions between different files that share a filename.
+            id_prefix = doc_id or filename
+
             for chunk, embedding in zip(chunks, embeddings, strict=False):
-                # Create unique ID: filename + chunk_index
-                vector_id = f"{filename}_{chunk['chunk_index']}"
+                vector_id = f"{id_prefix}_{chunk['chunk_index']}"
 
                 import json
 

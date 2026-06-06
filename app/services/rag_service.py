@@ -35,7 +35,9 @@ class RAGService:
             api_key=self.api_key, query_cache_service=query_cache_service
         )
         self.vector_service = VectorService()
-        self.llm_client = AsyncOpenAI(api_key=self.api_key)
+        # Bounded timeout/retries so a slow OpenAI call cannot outlive the
+        # API Gateway 29s limit and strand the Lambda event loop.
+        self.llm_client = AsyncOpenAI(api_key=self.api_key, timeout=25.0, max_retries=2)
         self.query_cache_service = query_cache_service  # Optional cache service
 
         # LLM configuration

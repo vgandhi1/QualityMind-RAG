@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import HTTPException, Request, status
 
 from app.config import settings
@@ -20,7 +22,8 @@ async def api_key_middleware(request: Request, call_next):
         return await call_next(request)
 
     provided = request.headers.get("X-API-Key")
-    if not provided or provided != settings.API_KEY:
+    # Constant-time comparison to avoid leaking the key via timing side-channel.
+    if not provided or not hmac.compare_digest(provided, settings.API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "Unauthorized", "message": "Invalid or missing API key"},

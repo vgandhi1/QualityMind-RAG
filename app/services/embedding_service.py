@@ -27,7 +27,7 @@ class EmbeddingService:
         if not self.api_key:
             raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY in .env file.")
 
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        self.client = AsyncOpenAI(api_key=self.api_key, timeout=25.0, max_retries=2)
         self.model = "text-embedding-3-small"  # 1536 dimensions
         self.dimensions = 1536
         self.query_cache_service = query_cache_service  # Optional cache service
