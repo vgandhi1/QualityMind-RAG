@@ -6,6 +6,7 @@ Also structurally validates quality agent (5-Why / fishbone / CAPA / 8D) outputs
 
 import json
 import asyncio
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
@@ -13,6 +14,14 @@ from datetime import datetime
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy
+
+from eval_metrics import (
+    ANSWER_RELEVANCY_TARGET,
+    FAITHFULNESS_TARGET,
+    build_metrics,
+    per_route_breakdown,
+    thresholds_met,
+)
 
 from app.config import settings
 from app.agent_validation import (
@@ -34,6 +43,7 @@ class RAGEvaluator:
     def __init__(self):
         self.test_queries_path = Path("data/eval/ragas_dataset.json")
         self.results_path = Path("evaluation_results.json")
+        self.metrics_path = Path("metrics.json")
         self.embedding_service = None
         self.vector_service = None
         self.rag_service = None
@@ -231,6 +241,7 @@ class RAGEvaluator:
         scores: Dict[str, Any] = {
             "evaluated_queries": 0,
             "skipped_queries": len(results) - len(ragas_results) - len(agent_results),
+            "per_route": per_route_breakdown(results),
         }
 
         # RAGAS for retrieval-based queries
@@ -282,21 +293,26 @@ class RAGEvaluator:
         return scores
 
     def save_results(self, results: List[Dict[str, Any]], scores: Dict[str, Any]):
+        metrics = build_metrics(results, scores)
         output = {
-            "evaluation_date": datetime.utcnow().isoformat(),
+            "evaluation_date": metrics["evaluation_date"],
             "total_queries": len(results),
             "ragas_scores": scores,
             "query_results": results,
             "summary": {
-                "faithfulness_target": 0.75,
-                "answer_relevancy_target": 0.80,
-                "faithfulness_met": scores.get('faithfulness', 0) > 0.75,
-                "answer_relevancy_met": scores.get('answer_relevancy', 0) > 0.80,
+                "faithfulness_target": FAITHFULNESS_TARGET,
+                "answer_relevancy_target": ANSWER_RELEVANCY_TARGET,
+                "faithfulness_met": scores.get('faithfulness', 0) > FAITHFULNESS_TARGET,
+                "answer_relevancy_met": scores.get('answer_relevancy', 0) > ANSWER_RELEVANCY_TARGET,
             },
         }
         with open(self.results_path, 'w') as f:
             json.dump(output, f, indent=2)
+        # Compact, pinnable baseline artifact (GUARDRAILS § Dev environment defaults).
+        with open(self.metrics_path, 'w') as f:
+            json.dump(metrics, f, indent=2)
         print(f"\n✓ Results saved to: {self.results_path}")
+        print(f"✓ Baseline metrics pinned to: {self.metrics_path}")
 
     async def run_evaluation(self):
         print("=" * 60)
@@ -309,10 +325,17 @@ class RAGEvaluator:
         return scores
 
 
-async def main():
+async def main() -> int:
     evaluator = RAGEvaluator()
-    await evaluator.run_evaluation()
+    scores = await evaluator.run_evaluation()
+    # Non-zero exit when RAGAS targets unmet so CI / make targets can gate on it.
+    # "--check" makes the gate strict; without it, report-only (exit 0).
+    if "--check" in sys.argv:
+        met = thresholds_met(scores)
+        print(f"\nThreshold gate: {'PASS' if met else 'FAIL'}")
+        return 0 if met else 1
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

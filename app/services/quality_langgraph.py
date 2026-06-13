@@ -59,6 +59,8 @@ def get_quality_workflows() -> QualityLangGraphWorkflows:
 
 class FiveWhyState(TypedDict, total=False):
     problem_statement: str
+    part_number: str | None
+    anomaly_label: str | None
     rag_context: str
     sql_context: str
     output: dict[str, Any]
@@ -143,10 +145,14 @@ class QualityLangGraphWorkflows:
 
     async def _node_five_why_gather(self, state: FiveWhyState) -> FiveWhyState:
         problem = state["problem_statement"]
+        part = state.get("part_number") or ""
+        # part_number (from CLaimLens handoff) filters PFMEA / NCR / SPC evidence.
+        rag_q = f"{problem} {part}".strip()
         rag_context, sql_context = await asyncio.gather(
-            self._retrieve_rag(problem, top_k=6),
+            self._retrieve_rag(rag_q, top_k=6),
             self._retrieve_sql_snippet(
-                f"Recent defects and failure modes related to: {problem}. Limit 20 rows."
+                f"Recent defects and failure modes for part {part or 'N/A'} "
+                f"related to: {problem}. Limit 20 rows."
             ),
         )
         return {**state, "rag_context": rag_context, "sql_context": sql_context}
@@ -163,6 +169,8 @@ class QualityLangGraphWorkflows:
         user = json.dumps(
             {
                 "problem_statement": state.get("problem_statement", ""),
+                "part_number": state.get("part_number"),
+                "anomaly_label": state.get("anomaly_label"),
                 "rag_context": state.get("rag_context", ""),
                 "sql_context": state.get("sql_context", ""),
             }
@@ -194,8 +202,19 @@ class QualityLangGraphWorkflows:
         graph.add_edge("synthesize", END)
         return graph.compile()
 
-    async def run_five_why(self, problem_statement: str) -> dict[str, Any]:
-        final_state = await self._five_why_graph.ainvoke({"problem_statement": problem_statement})
+    async def run_five_why(
+        self,
+        problem_statement: str,
+        part_number: str | None = None,
+        anomaly_label: str | None = None,
+    ) -> dict[str, Any]:
+        final_state = await self._five_why_graph.ainvoke(
+            {
+                "problem_statement": problem_statement,
+                "part_number": part_number,
+                "anomaly_label": anomaly_label,
+            }
+        )
         return final_state.get("output") or {}
 
     # ── Fishbone nodes ─────────────────────────────────────────────────────────
