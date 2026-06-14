@@ -98,8 +98,9 @@
   <div class="meta">
     <span class="pill">Manufacturing quality</span>
     <span class="pill">FastAPI · AWS Lambda</span>
-    <span class="pill">80 tests passing</span>
+    <span class="pill">106 tests passing</span>
     <span class="pill">RAGAS evaluated</span>
+    <span class="pill">ClaimLens handoff</span>
   </div>
 </div></header>
 
@@ -113,7 +114,7 @@
 <section id="approach"><div class="wrap">
   <div class="label">How it works</div>
   <h2>Route the question, then reason</h2>
-  <div class="flow">Engineer query
+  <div class="flow">Engineer query    ◄── or ClaimLens /handoff (problem_statement + part_number + anomaly_label)
      │
      ▼
  Intelligent router ──► SQL  (Vanna 2.0 + GPT-4o → PostgreSQL, human-approved)
@@ -122,10 +123,11 @@
      │              ──► AGENT (LangGraph: 5-Why · fishbone · CAPA · 8D)
      ▼
  Structured, cited, validated answer  +  OPIK trace  +  Redis cache</div>
-  <div class="grid g3" style="margin-top:26px">
+  <div class="grid g2" style="margin-top:26px">
     <div class="cell"><span class="tag">Retrieval</span><h3>Hybrid RAG</h3><p>Docling structure-aware chunking, quality-domain metadata tagging, heading-breadcrumb citations over Pinecone.</p></div>
     <div class="cell"><span class="tag">Structured</span><h3>Text-to-SQL</h3><p>Vanna 2.0 + GPT-4o with deterministic settings; human-in-the-loop approval and a dangerous-SQL guard before any execution.</p></div>
     <div class="cell"><span class="tag">Agents</span><h3>LangGraph RCA</h3><p>Pre-compiled 5-Why, Ishikawa 6M, CAPA and 8D graphs that synthesize validated JSON from retrieved evidence.</p></div>
+    <div class="cell"><span class="tag">Inbound</span><h3>ClaimLens handoff</h3><p>Consumes the full cross-project contract: <span style="font-family:var(--mono);font-size:13px">part_number</span> filters PFMEA / NCR / SPC, <span style="font-family:var(--mono);font-size:13px">anomaly_label</span> keeps taxonomy traceability, <span style="font-family:var(--mono);font-size:13px">claim_count</span> sets severity — straight into <span style="font-family:var(--mono);font-size:13px">/quality/five-why</span>.</p></div>
   </div>
 </div></section>
 
@@ -133,12 +135,12 @@
   <div class="label">Proof, not vibes</div>
   <h2>Evaluated &amp; tested</h2>
   <div class="metrics">
-    <div class="metric"><div class="n">80</div><div class="l">tests passing</div></div>
+    <div class="metric"><div class="n">106</div><div class="l">tests passing</div></div>
     <div class="metric"><div class="n">&gt;0.75</div><div class="l">faithfulness target</div></div>
     <div class="metric"><div class="n">&gt;0.80</div><div class="l">relevancy target</div></div>
     <div class="metric"><div class="n">4</div><div class="l">agent workflows</div></div>
   </div>
-  <p class="body mut" style="margin-top:22px">Agent outputs are structurally validated offline (<span style="font-family:var(--mono);font-size:14px">app/agent_validation.py</span>): 5-Why keys + 3–5 whys + confidence ∈ [0,1], all six fishbone bones, CAPA fields, 8D disciplines D1–D8. The router and dangerous-SQL guard (DROP/DELETE/TRUNCATE/ALTER) are unit-tested with no live LLM call. RAGAS faithfulness/relevancy thresholds are asserted by the harness when keys are present.</p>
+  <p class="body mut" style="margin-top:22px">Agent outputs are structurally validated offline (<span style="font-family:var(--mono);font-size:14px">app/agent_validation.py</span>): 5-Why keys + 3–5 whys + confidence ∈ [0,1], all six fishbone bones, CAPA fields, 8D disciplines D1–D8. The router and dangerous-SQL guard (DROP/DELETE/TRUNCATE/ALTER) are unit-tested with no live LLM call. The ClaimLens handoff contract has its own consumer tests, and <span style="font-family:var(--mono);font-size:14px">evaluate.py</span> pins a per-route metrics summary. RAGAS faithfulness/relevancy thresholds are asserted by the harness when keys are present.</p>
 </div></section>
 
 <section><div class="wrap">

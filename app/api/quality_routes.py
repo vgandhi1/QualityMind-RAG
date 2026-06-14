@@ -42,6 +42,11 @@ def _get_narrative_client() -> AsyncOpenAI:
 
 class ProblemBody(BaseModel):
     problem_statement: str = Field(..., min_length=3, max_length=2000)
+    # CLaimLens RcaHandoff contract (GUARDRAILS § Handoff contract). Optional so
+    # /quality/five-why stays usable standalone; populated on CLaimLens handoff.
+    part_number: str | None = Field(None, max_length=64)
+    anomaly_label: str | None = Field(None, max_length=64)
+    claim_count: int | None = Field(None, ge=0)
 
 
 class FishboneBody(BaseModel):
@@ -117,7 +122,11 @@ async def five_why(body: ProblemBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
     wf = _get_workflows_or_503()
     try:
-        result = await wf.run_five_why(body.problem_statement)
+        result = await wf.run_five_why(
+            body.problem_statement,
+            part_number=body.part_number,
+            anomaly_label=body.anomaly_label,
+        )
         return _agent_response("analysis", "five_why", result)
     except Exception:
         logger.exception("five_why failed")
