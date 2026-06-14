@@ -125,7 +125,7 @@ def main() -> None:
                 random.choice(["rework", "scrap", "use-as-is"]),
                 random.randint(1, 10),
                 date.today() - timedelta(days=random.randint(0, 365)),
-                random.choice(["A", "B", "C"]),
+                random.choice(["day", "evening", "night", "weekend"]),
                 f"OP-{random.randint(1000, 9999)}",
                 random.choice(supplier_ids),
                 random.choice(ncr_ids) if random.random() > 0.3 else None,
