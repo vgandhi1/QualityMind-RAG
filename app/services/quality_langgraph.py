@@ -13,6 +13,7 @@ from langgraph.graph import END, StateGraph
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.services.component_alias import alias_sql_hint
 from app.services.rag_service import RAGService
 from app.services.sql_service import TextToSQLService
 from app.utils import QueryValidator
@@ -59,7 +60,7 @@ def get_quality_workflows() -> QualityLangGraphWorkflows:
 
 class FiveWhyState(TypedDict, total=False):
     problem_statement: str
-    part_number: str | None
+    component: str | None
     anomaly_label: str | None
     rag_context: str
     sql_context: str
@@ -78,6 +79,7 @@ class DraftState(TypedDict, total=False):
     mode: str
     problem_statement: str
     part_number: str | None
+    component: str | None
     rag_context: str
     sql_context: str
     output: dict[str, Any]
@@ -145,14 +147,16 @@ class QualityLangGraphWorkflows:
 
     async def _node_five_why_gather(self, state: FiveWhyState) -> FiveWhyState:
         problem = state["problem_statement"]
-        part = state.get("part_number") or ""
-        # part_number (from CLaimLens handoff) filters PFMEA / NCR / SPC evidence.
-        rag_q = f"{problem} {part}".strip()
+        component = state.get("component") or ""
+        # component (from CLaimLens handoff / extraction) scopes PFMEA / NCR evidence.
+        rag_q = f"{problem} {component}".strip()
+        sql_hint = alias_sql_hint(component)
         rag_context, sql_context = await asyncio.gather(
             self._retrieve_rag(rag_q, top_k=6),
             self._retrieve_sql_snippet(
-                f"Recent defects and failure modes for part {part or 'N/A'} "
+                f"Recent defects and failure modes for component {component or 'N/A'} "
                 f"related to: {problem}. Limit 20 rows."
+                + (f" {sql_hint}" if sql_hint else "")
             ),
         )
         return {**state, "rag_context": rag_context, "sql_context": sql_context}
@@ -169,7 +173,7 @@ class QualityLangGraphWorkflows:
         user = json.dumps(
             {
                 "problem_statement": state.get("problem_statement", ""),
-                "part_number": state.get("part_number"),
+                "component": state.get("component"),
                 "anomaly_label": state.get("anomaly_label"),
                 "rag_context": state.get("rag_context", ""),
                 "sql_context": state.get("sql_context", ""),
@@ -205,13 +209,13 @@ class QualityLangGraphWorkflows:
     async def run_five_why(
         self,
         problem_statement: str,
-        part_number: str | None = None,
+        component: str | None = None,
         anomaly_label: str | None = None,
     ) -> dict[str, Any]:
         final_state = await self._five_why_graph.ainvoke(
             {
                 "problem_statement": problem_statement,
-                "part_number": part_number,
+                "component": component,
                 "anomaly_label": anomaly_label,
             }
         )
@@ -287,11 +291,14 @@ class QualityLangGraphWorkflows:
 
     async def _node_draft_gather(self, state: DraftState) -> DraftState:
         problem = state["problem_statement"]
-        part = state.get("part_number") or ""
+        scope = state.get("component") or state.get("part_number") or ""
+        # Prefer an explicit BOM part_number; else translate the descriptive component.
+        sql_hint = "" if state.get("part_number") else alias_sql_hint(state.get("component"))
         rag_context, sql_context = await asyncio.gather(
-            self._retrieve_rag(f"{problem} {part} CAPA 8D PFMEA history", top_k=8),
+            self._retrieve_rag(f"{problem} {scope} CAPA 8D PFMEA history", top_k=8),
             self._retrieve_sql_snippet(
-                f"Recent defects, CAPAs, and 8Ds for part {part or 'N/A'} related to: {problem}"
+                f"Recent defects, CAPAs, and 8Ds for {scope or 'N/A'} related to: {problem}"
+                + (f" {sql_hint}" if sql_hint else "")
             ),
         )
         return {**state, "rag_context": rag_context, "sql_context": sql_context}
@@ -318,6 +325,7 @@ class QualityLangGraphWorkflows:
             {
                 "mode": mode,
                 "problem_statement": state.get("problem_statement", ""),
+                "component": state.get("component"),
                 "part_number": state.get("part_number"),
                 "rag_context": state.get("rag_context", ""),
                 "sql_context": state.get("sql_context", ""),
@@ -345,9 +353,18 @@ class QualityLangGraphWorkflows:
         return graph.compile()
 
     async def run_draft(
-        self, mode: str, problem_statement: str, part_number: str | None
+        self,
+        mode: str,
+        problem_statement: str,
+        part_number: str | None = None,
+        component: str | None = None,
     ) -> dict[str, Any]:
         final_state = await self._draft_graph.ainvoke(
-            {"mode": mode, "problem_statement": problem_statement, "part_number": part_number}
+            {
+                "mode": mode,
+                "problem_statement": problem_statement,
+                "part_number": part_number,
+                "component": component,
+            }
         )
         return final_state.get("output") or {}

@@ -44,7 +44,7 @@ class ProblemBody(BaseModel):
     problem_statement: str = Field(..., min_length=3, max_length=2000)
     # CLaimLens RcaHandoff contract (GUARDRAILS § Handoff contract). Optional so
     # /quality/five-why stays usable standalone; populated on CLaimLens handoff.
-    part_number: str | None = Field(None, max_length=64)
+    component: str | None = Field(None, max_length=200)
     anomaly_label: str | None = Field(None, max_length=64)
     claim_count: int | None = Field(None, ge=0)
 
@@ -57,6 +57,7 @@ class FishboneBody(BaseModel):
 class DraftBody(BaseModel):
     problem_statement: str = Field(..., min_length=3, max_length=2000)
     part_number: str | None = Field(None, max_length=64)
+    component: str | None = Field(None, max_length=200)
 
 
 class PfmeaSearchBody(BaseModel):
@@ -124,7 +125,7 @@ async def five_why(body: ProblemBody) -> dict[str, Any]:
     try:
         result = await wf.run_five_why(
             body.problem_statement,
-            part_number=body.part_number,
+            component=body.component,
             anomaly_label=body.anomaly_label,
         )
         return _agent_response("analysis", "five_why", result)
@@ -156,7 +157,9 @@ async def draft_capa(body: DraftBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
     wf = _get_workflows_or_503()
     try:
-        result = await wf.run_draft("capa", body.problem_statement, body.part_number)
+        result = await wf.run_draft(
+            "capa", body.problem_statement, part_number=body.part_number, component=body.component
+        )
         return _agent_response("draft", "capa", result)
     except Exception:
         logger.exception("draft_capa failed")
@@ -171,7 +174,9 @@ async def draft_8d(body: DraftBody) -> dict[str, Any]:
     _validate_question(body.problem_statement)
     wf = _get_workflows_or_503()
     try:
-        result = await wf.run_draft("8d", body.problem_statement, body.part_number)
+        result = await wf.run_draft(
+            "8d", body.problem_statement, part_number=body.part_number, component=body.component
+        )
         return _agent_response("draft", "8d", result)
     except Exception:
         logger.exception("draft_8d failed")
