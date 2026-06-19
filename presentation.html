@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QualityMind RAG — Presentation</title>
+<meta name="description" content="AI-powered manufacturing quality engineering assistant: Hybrid RAG + Text-to-SQL + LangGraph 8D/5-Why agents." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#faf8f3; --surface:rgba(27,26,22,.035); --border:#e3dfd3; --hair:#d8d3c5;
+    --text:#1b1a16; --muted:#6f6b61; --faint:#9a9488; --accent:#b23a1e; --accent-deep:#8f2c14;
+    --warn:#b06a0c; --ink:#18170f;
+    --display:"Fraunces",Georgia,serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+    --body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--paper);color:var(--text);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{color:var(--accent-deep)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:20;background:rgba(250,248,243,.88);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:58px}
+  .brand{font-family:var(--mono);font-size:14px;letter-spacing:.02em;color:var(--text)}
+  .brand b{color:var(--accent);font-weight:500}
+  .navlinks{display:flex;gap:6px}
+  .navlinks a{font-family:var(--mono);font-size:12px;color:var(--muted);padding:6px 10px;border-radius:4px}
+  .navlinks a:hover{background:var(--surface);color:var(--text)}
+  .cta{background:var(--accent);color:var(--paper)!important;padding:6px 12px}
+  .cta:hover{background:var(--accent-deep)}
+
+  /* hero */
+  header{padding:88px 0 56px;border-bottom:1px solid var(--border)}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(38px,6vw,68px);line-height:1.02;letter-spacing:-.02em;margin:14px 0 18px}
+  h1 span{color:var(--accent)}
+  .lede{font-size:clamp(18px,2.2vw,22px);color:var(--muted);max-width:64ch}
+  .meta{margin-top:26px;display:flex;flex-wrap:wrap;gap:10px}
+  .pill{font-family:var(--mono);font-size:12px;color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:5px 12px}
+
+  section{padding:60px 0;border-bottom:1px solid var(--border)}
+  .label{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:18px}
+  h2{font-family:var(--display);font-weight:500;font-size:clamp(26px,3.4vw,38px);letter-spacing:-.01em;margin-bottom:18px}
+  p.body{font-size:18px;color:var(--text);max-width:70ch;margin-bottom:14px}
+  p.body.mut{color:var(--muted)}
+
+  .grid{display:grid;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+  .cell{background:var(--paper);padding:22px}
+  .cell h3{font-family:var(--display);font-weight:500;font-size:20px;margin-bottom:8px}
+  .cell p{font-size:15px;color:var(--muted)}
+  .cell .tag{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+
+  .flow{font-family:var(--mono);font-size:13px;line-height:1.9;color:var(--text);background:var(--ink);color:var(--paper);border-radius:8px;padding:24px 26px;overflow-x:auto;white-space:pre}
+
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .metric{background:var(--paper);padding:24px 18px;text-align:center}
+  .metric .n{font-family:var(--display);font-size:34px;color:var(--accent);line-height:1}
+  .metric .l{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;letter-spacing:.04em}
+
+  .stack{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-family:var(--mono);font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--hair);border-radius:5px;padding:6px 11px}
+
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--hair)}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  td.num{font-family:var(--mono);color:var(--accent)}
+
+  footer{padding:48px 0 64px}
+  footer .row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+  footer a{font-family:var(--mono);font-size:13px}
+  .note{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:10px}
+
+  @media(max-width:720px){.g2,.g3{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.navlinks .hidem{display:none}}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <div class="brand">vinay<b>.</b>gandhi / quality-systems</div>
+  <div class="navlinks">
+    <a class="hidem" href="#problem">Problem</a>
+    <a class="hidem" href="#approach">Approach</a>
+    <a class="hidem" href="#metrics">Proof</a>
+    <a class="cta" href="https://github.com/vgandhi1/QualityMind-RAG">Repo ↗</a>
+  </div>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="kicker">RAG · Text-to-SQL · LangGraph agents</div>
+  <h1>QualityMind <span>RAG</span></h1>
+  <p class="lede">One natural-language interface across PFMEA, CAPA, 8D and defect databases — that also drafts the 5-Why, fishbone, CAPA and 8D a senior quality engineer would write by hand.</p>
+  <div class="meta">
+    <span class="pill">Manufacturing quality</span>
+    <span class="pill">FastAPI · AWS Lambda</span>
+    <span class="pill">106 tests passing</span>
+    <span class="pill">RAGAS evaluated</span>
+    <span class="pill">ClaimLens handoff</span>
+  </div>
+</div></header>
+
+<section id="problem"><div class="wrap">
+  <div class="label">The problem</div>
+  <h2>Answers live in two places that don't talk</h2>
+  <p class="body">Quality engineers lose hours stitching together <b>unstructured documents</b> (PFMEA, 8D reports, CAPA records, QMS procedures) and <b>structured operational data</b> (defects, NCRs, supplier ratings, SPC results) to answer questions they face every day.</p>
+  <p class="body mut">Beyond retrieval, the real work — tracing a root cause through a 5-Why chain, building an Ishikawa diagram, drafting a CAPA/8D from evidence — is still done manually, report by report.</p>
+</div></section>
+
+<section id="approach"><div class="wrap">
+  <div class="label">How it works</div>
+  <h2>Route the question, then reason</h2>
+  <div class="flow">Engineer query    ◄── or ClaimLens /handoff (problem_statement + part_number + anomaly_label)
+     │
+     ▼
+ Intelligent router ──► SQL  (Vanna 2.0 + GPT-4o → PostgreSQL, human-approved)
+     │              ──► DOCS (Pinecone hybrid retrieval over PFMEA/8D/QMS)
+     │              ──► HYBRID (data + document context fused)
+     │              ──► AGENT (LangGraph: 5-Why · fishbone · CAPA · 8D)
+     ▼
+ Structured, cited, validated answer  +  OPIK trace  +  Redis cache</div>
+  <div class="grid g2" style="margin-top:26px">
+    <div class="cell"><span class="tag">Retrieval</span><h3>Hybrid RAG</h3><p>Docling structure-aware chunking, quality-domain metadata tagging, heading-breadcrumb citations over Pinecone.</p></div>
+    <div class="cell"><span class="tag">Structured</span><h3>Text-to-SQL</h3><p>Vanna 2.0 + GPT-4o with deterministic settings; human-in-the-loop approval and a dangerous-SQL guard before any execution. A component&rarr;BOM alias map resolves CLaimLens' descriptive component (e.g. "Telematics Control Unit") to candidate <span style="font-family:var(--mono);font-size:13px">part_number</span> codes so SQL filters BOM-keyed rows instead of missing them.</p></div>
+    <div class="cell"><span class="tag">Agents</span><h3>LangGraph RCA</h3><p>Pre-compiled 5-Why, Ishikawa 6M, CAPA and 8D graphs that synthesize validated JSON from retrieved evidence.</p></div>
+    <div class="cell"><span class="tag">Inbound</span><h3>ClaimLens handoff</h3><p>Consumes the full cross-project contract: <span style="font-family:var(--mono);font-size:13px">part_number</span> filters PFMEA / NCR / SPC, <span style="font-family:var(--mono);font-size:13px">anomaly_label</span> keeps taxonomy traceability, <span style="font-family:var(--mono);font-size:13px">claim_count</span> sets severity — straight into <span style="font-family:var(--mono);font-size:13px">/quality/five-why</span>.</p></div>
+  </div>
+</div></section>
+
+<section id="metrics"><div class="wrap">
+  <div class="label">Proof, not vibes</div>
+  <h2>Evaluated &amp; tested</h2>
+  <div class="metrics">
+    <div class="metric"><div class="n">106</div><div class="l">tests passing</div></div>
+    <div class="metric"><div class="n">&gt;0.75</div><div class="l">faithfulness target</div></div>
+    <div class="metric"><div class="n">&gt;0.80</div><div class="l">relevancy target</div></div>
+    <div class="metric"><div class="n">4</div><div class="l">agent workflows</div></div>
+  </div>
+  <p class="body mut" style="margin-top:22px">Agent outputs are structurally validated offline (<span style="font-family:var(--mono);font-size:14px">app/agent_validation.py</span>): 5-Why keys + 3–5 whys + confidence ∈ [0,1], all six fishbone bones, CAPA fields, 8D disciplines D1–D8. The router and dangerous-SQL guard (DROP/DELETE/TRUNCATE/ALTER) are unit-tested with no live LLM call. The ClaimLens handoff contract has its own consumer tests, and <span style="font-family:var(--mono);font-size:14px">evaluate.py</span> pins a per-route metrics summary. RAGAS faithfulness/relevancy thresholds are asserted by the harness when keys are present.</p>
+</div></section>
+
+<section><div class="wrap">
+  <div class="label">Stack</div>
+  <h2>Built with</h2>
+  <div class="stack">
+    <span class="chip">FastAPI</span><span class="chip">LangGraph</span><span class="chip">Vanna 2.0</span>
+    <span class="chip">Pinecone</span><span class="chip">OpenAI GPT-4o</span><span class="chip">PostgreSQL</span>
+    <span class="chip">Redis</span><span class="chip">RAGAS</span><span class="chip">OPIK</span>
+    <span class="chip">AWS Lambda ARM64</span><span class="chip">Docker</span><span class="chip">GitHub Actions</span>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="row">
+    <div>
+      <div class="brand" style="font-size:15px">QualityMind <b>RAG</b></div>
+      <div class="note">Pairs with ClaimLens — warranty-narrative NLP that feeds these RCA workflows.</div>
+    </div>
+    <div style="display:flex;gap:18px">
+      <a href="https://github.com/vgandhi1/QualityMind-RAG">GitHub ↗</a>
+      <a href="https://github.com/vgandhi1/claimlens">ClaimLens ↗</a>
+      <a href="https://vgandhi1.github.io">Portfolio ↗</a>
+    </div>
+  </div>
+</div></footer>
+
+</body>
+</html>
