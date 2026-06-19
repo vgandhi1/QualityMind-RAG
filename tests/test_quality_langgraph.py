@@ -45,7 +45,7 @@ def test_run_five_why_accepts_handoff_kwargs(monkeypatch):
     llm_json = {"problem_statement": "p", "whys": [], "root_cause": "rc"}
     wf = _make_wf(monkeypatch, llm_json)
     output = asyncio.run(
-        wf.run_five_why("p", part_number="TCU-1", anomaly_label="cloud_sync")
+        wf.run_five_why("p", component="Telematics Control Unit", anomaly_label="cloud_sync")
     )
     assert output == llm_json
 

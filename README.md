@@ -118,6 +118,7 @@ Beyond retrieval, three **LangGraph agent workflows** automate the problem-solvi
 | **Schema-aware generation** | Full quality schema context (7 tables, join hints, 10 example Q&A pairs) injected per query |
 | **Result caching** | SELECT queries cached in Redis for 15 minutes — instant repeat answers |
 | **Safety guard** | Dangerous patterns (DROP, DELETE, TRUNCATE, ALTER) blocked before any execution |
+| **Component → BOM alias bridge** | CLaimLens hands off a descriptive component name (e.g. "Telematics Control Unit"); the engineering DB is keyed on BOM `part_number`. An alias map resolves the description to candidate `part_number` codes so SQL filters on `part_number IN (...)` instead of missing every BOM-keyed row |
 | **Pinecone agent memory** | Optional persistent SQL training memory across sessions |
 
 ### Quality Agent Workflows (LangGraph)

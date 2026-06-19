@@ -125,7 +125,7 @@
  Structured, cited, validated answer  +  OPIK trace  +  Redis cache</div>
   <div class="grid g2" style="margin-top:26px">
     <div class="cell"><span class="tag">Retrieval</span><h3>Hybrid RAG</h3><p>Docling structure-aware chunking, quality-domain metadata tagging, heading-breadcrumb citations over Pinecone.</p></div>
-    <div class="cell"><span class="tag">Structured</span><h3>Text-to-SQL</h3><p>Vanna 2.0 + GPT-4o with deterministic settings; human-in-the-loop approval and a dangerous-SQL guard before any execution.</p></div>
+    <div class="cell"><span class="tag">Structured</span><h3>Text-to-SQL</h3><p>Vanna 2.0 + GPT-4o with deterministic settings; human-in-the-loop approval and a dangerous-SQL guard before any execution. A component&rarr;BOM alias map resolves CLaimLens' descriptive component (e.g. "Telematics Control Unit") to candidate <span style="font-family:var(--mono);font-size:13px">part_number</span> codes so SQL filters BOM-keyed rows instead of missing them.</p></div>
     <div class="cell"><span class="tag">Agents</span><h3>LangGraph RCA</h3><p>Pre-compiled 5-Why, Ishikawa 6M, CAPA and 8D graphs that synthesize validated JSON from retrieved evidence.</p></div>
     <div class="cell"><span class="tag">Inbound</span><h3>ClaimLens handoff</h3><p>Consumes the full cross-project contract: <span style="font-family:var(--mono);font-size:13px">part_number</span> filters PFMEA / NCR / SPC, <span style="font-family:var(--mono);font-size:13px">anomaly_label</span> keeps taxonomy traceability, <span style="font-family:var(--mono);font-size:13px">claim_count</span> sets severity — straight into <span style="font-family:var(--mono);font-size:13px">/quality/five-why</span>.</p></div>
   </div>

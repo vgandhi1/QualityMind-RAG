@@ -9,3 +9,6 @@ htmlcov/
 *.egg-info/
 .env
 models/
+
+# runtime logs
+logs/
